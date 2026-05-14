@@ -4,12 +4,12 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 
 ## What this service does
 
-- Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`, including optional unit/glassware IDs plus display names.
+- Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`, including optional unit, glassware, method, and tag IDs plus localized display names.
 - Accepts recipe image uploads as `multipart/form-data` at `POST /api/images`, stores them in Cloudflare R2, and returns an `imageUrl` that can be attached to recipe payloads.
 - Stores short-lived recipe share records in Cloudflare KV under `recipe:{id}`.
 - Computes a canonical SHA-256 checksum of each recipe before saving and reuses an existing share when the same recipe is posted again.
 - Returns a short public link such as `https://api.yourbar.app/r/{id}` and a canonical API URL.
-- Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}` and prefers unit/glassware display names when they are supplied.
+- Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}` and prefers localized unit, glassware, method, and tag display names when they are supplied.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
 
 This service intentionally does **not** include authentication, user accounts, moderation, or analytics in the MVP.
@@ -182,7 +182,7 @@ Response:
 
 If the canonicalized `recipe` object already exists, the Worker returns the existing share with `200 OK` and `"duplicate": true` rather than writing another `recipe:{id}` record. Canonicalization sorts object keys and trims string values before hashing, while preserving array order.
 
-Recipe ingredients may include `unitId` and `unitName`, and recipes may include `glasswareId` and `glasswareName`. The landing page displays `unitName`/`glasswareName` when present, but `GET /api/recipes/{id}` omits those display-name fields from its JSON response while keeping the IDs. Legacy `unit` and `glassware` strings are still accepted and displayed as before.
+Recipe ingredients may include `unitId` and `unitName`; recipes may include `glasswareId`/`glasswareName`, `methodId`/`methodName`, or a localized `method` object shaped as `{ "id": "method-id", "name": "Localized name" }`; and `tags` may be either legacy strings or localized tag objects shaped as `{ "id": "tag-id", "name": "Localized name" }`. The landing page displays localized names when present, and `GET /api/recipes/{id}` returns both the IDs and localized names exactly as stored. Legacy `unit`, `glassware`, `method`, and string `tags` values are still accepted and displayed as before.
 
 ### Fetch recipe share
 
@@ -200,8 +200,12 @@ Response:
     "kind": "yourbar.recipeShare",
     "recipe": {
       "name": "Daiquiri",
-      "ingredients": [{ "name": "Rum", "amount": 60, "unitId": "unit-ml" }],
-      "glasswareId": "glass-coupe"
+      "ingredients": [{ "name": "Rum", "amount": 60, "unitId": "unit-ml", "unitName": "ml" }],
+      "glasswareId": "glass-coupe",
+      "glasswareName": "Coupe",
+      "methodId": "method-shaken",
+      "methodName": "Shaken",
+      "tags": [{ "id": "tag-classic", "name": "Classic" }]
     }
   },
   "createdAt": "2026-05-14T00:00:00.000Z",
@@ -242,8 +246,13 @@ Response:
     "glasswareId": "glass-coupe",
     "glasswareName": "Coupe",
     "garnish": "Lime wheel",
-    "method": "Shaken",
-    "tags": ["classic", "rum", "sour"],
+    "methodId": "method-shaken",
+    "methodName": "Shaken",
+    "tags": [
+      { "id": "tag-classic", "name": "Classic" },
+      { "id": "tag-rum", "name": "Rum" },
+      { "id": "tag-sour", "name": "Sour" }
+    ],
     "servings": 1,
     "imageUrl": "https://example.com/daiquiri.jpg"
   },

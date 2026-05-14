@@ -13,8 +13,13 @@
     "glasswareId": "glass-coupe",
     "glasswareName": "Coupe",
     "garnish": "Lime wheel",
-    "method": "Shaken",
-    "tags": ["classic", "rum", "sour"],
+    "methodId": "method-shaken",
+    "methodName": "Shaken",
+    "tags": [
+      { "id": "tag-classic", "name": "Classic" },
+      { "id": "tag-rum", "name": "Rum" },
+      { "id": "tag-sour", "name": "Sour" }
+    ],
     "servings": 1,
     "imageUrl": "https://example.com/daiquiri.jpg"
   },

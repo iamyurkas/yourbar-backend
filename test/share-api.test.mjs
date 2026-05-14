@@ -65,13 +65,17 @@ test('payload validation accepts a valid RecipeSharePayloadV1', () => {
   assert.equal(result.ok, true);
 });
 
-test('payload validation accepts unit and glassware ids with display names', () => {
+test('payload validation accepts unit, glassware, method, and tag ids with display names', () => {
   const result = validateRecipeSharePayloadV1({
     ...validPayload,
     recipe: {
       ...validPayload.recipe,
       glasswareId: 'coupe-glass',
       glasswareName: 'Coupe',
+      method: { id: 'method-shaken', name: 'Shaken' },
+      methodId: 'method-shaken',
+      methodName: 'Shaken',
+      tags: [{ id: 'tag-classic', name: 'Classic' }, 'rum'],
       ingredients: [
         { name: 'Rum', amount: 60, unitId: 'ml', unitName: 'ml' },
         { name: 'Lime juice', amount: 30, unitId: 'ml', unitName: 'ml' },
@@ -201,6 +205,35 @@ test('landing page prefers display names for units and glassware', () => {
   assert.match(html, /Nick &amp; Nora/);
   assert.doesNotMatch(html, /glass-123/);
   assert.doesNotMatch(html, /unit-ml/);
+});
+
+test('landing page prefers localized method and tag names', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        method: { id: 'method-shaken', name: 'shake' },
+        methodName: 'збовтати',
+        tags: [
+          { id: 'tag-classic', name: 'Класика' },
+          { id: 'tag-sour', name: 'Сауер' },
+        ],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /<section>\s*<h2>Method<\/h2>\s*<p>Збовтати<\/p>\s*<\/section>/);
+  assert.match(html, /Класика/);
+  assert.match(html, /Сауер/);
+  assert.doesNotMatch(html, /method-shaken/);
+  assert.doesNotMatch(html, /tag-classic/);
 });
 
 test('landing page renders inline markup and a single capitalized method without numbering', () => {
@@ -342,7 +375,7 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
 });
 
-test('route integration omits unit and glassware display names from recipe JSON', async () => {
+test('route integration returns localized display names from recipe JSON', async () => {
   const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
   const payload = {
     ...validPayload,
@@ -350,6 +383,9 @@ test('route integration omits unit and glassware display names from recipe JSON'
       ...validPayload.recipe,
       glasswareId: 'glass-123',
       glasswareName: 'Coupe',
+      methodId: 'method-shaken',
+      methodName: 'Shaken',
+      tags: [{ id: 'tag-classic', name: 'Classic' }],
       ingredients: [
         { name: 'Rum', amount: 60, unitId: 'unit-ml', unitName: 'ml' },
       ],
@@ -366,9 +402,12 @@ test('route integration omits unit and glassware display names from recipe JSON'
   assert.equal(get.status, 200);
   const stored = await get.json();
   assert.equal(stored.payload.recipe.glasswareId, 'glass-123');
-  assert.equal(stored.payload.recipe.glasswareName, undefined);
+  assert.equal(stored.payload.recipe.glasswareName, 'Coupe');
+  assert.equal(stored.payload.recipe.methodId, 'method-shaken');
+  assert.equal(stored.payload.recipe.methodName, 'Shaken');
+  assert.deepEqual(stored.payload.recipe.tags, [{ id: 'tag-classic', name: 'Classic' }]);
   assert.equal(stored.payload.recipe.ingredients[0].unitId, 'unit-ml');
-  assert.equal(stored.payload.recipe.ingredients[0].unitName, undefined);
+  assert.equal(stored.payload.recipe.ingredients[0].unitName, 'ml');
 });
 
 
