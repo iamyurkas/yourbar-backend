@@ -30,6 +30,28 @@ class MockKV {
   }
 }
 
+class MockR2 {
+  values = new Map();
+  async put(key, value, options = {}) {
+    this.values.set(key, {
+      body: value,
+      httpEtag: 'mock-etag',
+      contentType: options.httpMetadata?.contentType,
+    });
+  }
+  async get(key) {
+    const value = this.values.get(key);
+    if (!value) return null;
+    return {
+      body: value.body,
+      httpEtag: value.httpEtag,
+      writeHttpMetadata(headers) {
+        if (value.contentType) headers.set('Content-Type', value.contentType);
+      },
+    };
+  }
+}
+
 function env(overrides = {}) {
   return {
     RECIPE_SHARES: new MockKV(),
@@ -142,4 +164,58 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   const stored = await get.json();
   assert.equal(stored.id, created.id);
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
+});
+
+
+test('route integration uploads and serves a recipe image using mocked R2', async () => {
+  const bindings = env({ RECIPE_IMAGES: new MockR2(), MAX_IMAGE_BYTES: '1024' });
+  const form = new FormData();
+  form.set('image', new File([new Uint8Array([1, 2, 3, 4])], 'daiquiri.webp', { type: 'image/webp' }));
+
+  const upload = await handleRequest(new Request('https://api.yourbar.app/api/images', {
+    method: 'POST',
+    headers: { Origin: 'https://mobile.example' },
+    body: form,
+  }), bindings);
+
+  assert.equal(upload.status, 201);
+  assert.equal(upload.headers.get('Access-Control-Allow-Origin'), '*');
+  const uploaded = await upload.json();
+
+  assert.match(uploaded.key, /^[0-9a-f-]+\.webp$/);
+  assert.equal(uploaded.imageUrl, `https://api.yourbar.app/images/${uploaded.key}`);
+
+  const image = await handleRequest(new Request(uploaded.imageUrl), bindings);
+  assert.equal(image.status, 200);
+  assert.equal(image.headers.get('Content-Type'), 'image/webp');
+  assert.equal(image.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.deepEqual(new Uint8Array(await image.arrayBuffer()), new Uint8Array([1, 2, 3, 4]));
+});
+
+test('image upload rejects unsupported content types', async () => {
+  const bindings = env({ RECIPE_IMAGES: new MockR2() });
+  const form = new FormData();
+  form.set('image', new File(['not an image'], 'notes.txt', { type: 'text/plain' }));
+
+  const response = await handleRequest(new Request('https://api.yourbar.app/api/images', {
+    method: 'POST',
+    body: form,
+  }), bindings);
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, 'validation_failed');
+});
+
+test('image upload enforces configured max size', async () => {
+  const bindings = env({ RECIPE_IMAGES: new MockR2(), MAX_IMAGE_BYTES: '3' });
+  const form = new FormData();
+  form.set('image', new File([new Uint8Array([1, 2, 3, 4])], 'daiquiri.png', { type: 'image/png' }));
+
+  const response = await handleRequest(new Request('https://api.yourbar.app/api/images', {
+    method: 'POST',
+    body: form,
+  }), bindings);
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, 'payload_too_large');
 });

@@ -5,12 +5,13 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 ## What this service does
 
 - Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`.
+- Accepts recipe image uploads as `multipart/form-data` at `POST /api/images`, stores them in Cloudflare R2, and returns an `imageUrl` that can be attached to recipe payloads.
 - Stores short-lived recipe share records in Cloudflare KV under `recipe:{id}`.
 - Returns a short public link such as `https://api.yourbar.app/r/{id}` and a canonical API URL.
 - Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}`.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
 
-This service intentionally does **not** include authentication, user accounts, moderation, analytics, or image uploads in the MVP.
+This service intentionally does **not** include authentication, user accounts, moderation, or analytics in the MVP.
 
 ## Local setup
 
@@ -51,6 +52,36 @@ preview_id = "<preview namespace id>"
 
 The Worker uses the binding name `RECIPE_SHARES`.
 
+## Cloudflare R2 setup
+
+Before creating buckets, make sure R2 is enabled for the Cloudflare account in the Cloudflare Dashboard under **R2 object storage**. If Wrangler returns `Please enable R2 through the Cloudflare Dashboard. [code: 10042]`, open the dashboard, enable R2 for the selected account, and then rerun the bucket creation commands.
+
+Create production and preview R2 buckets for uploaded recipe images after R2 is enabled:
+
+```bash
+npx wrangler r2 bucket create yourbar-recipe-images
+npx wrangler r2 bucket create yourbar-recipe-images-preview
+```
+
+`wrangler.toml` binds those buckets as `RECIPE_IMAGES`:
+
+```toml
+[[r2_buckets]]
+binding = "RECIPE_IMAGES"
+bucket_name = "yourbar-recipe-images"
+preview_bucket_name = "yourbar-recipe-images-preview"
+```
+
+By default, uploaded images are served back through this Worker at `${PUBLIC_BASE_URL}/images/{key}`. If you put R2 behind a CDN or custom public domain, set `IMAGE_PUBLIC_BASE_URL` to that image base URL.
+
+After enabling R2 and creating the buckets, deploy the Worker so the new `/api/images` route and `RECIPE_IMAGES` binding are available in production:
+
+```bash
+npm run deploy
+```
+
+If `POST https://api.yourbar.app/api/images` returns `404 {"error":{"code":"not_found"...}}`, the production Worker does not have the image route yet or the custom domain is still routed to an older Worker deployment. Run `npm run deploy`, then confirm the deployed Worker is attached to `api.yourbar.app` in the Cloudflare Workers Routes/Custom Domains settings.
+
 ## Configuration
 
 Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment variables:
@@ -61,6 +92,8 @@ Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment 
 | `APP_DEEP_LINK_SCHEME` | `yourbar` | Custom app scheme for import links. |
 | `DEFAULT_RECIPE_TTL_SECONDS` | `2592000` | KV expiration TTL; default is 30 days. |
 | `MAX_RECIPE_PAYLOAD_BYTES` | `65536` | Maximum raw JSON request body size. |
+| `MAX_IMAGE_BYTES` | `5242880` | Maximum uploaded image size; default is 5 MiB. |
+| `IMAGE_PUBLIC_BASE_URL` | `${PUBLIC_BASE_URL}/images` | Optional public base URL for uploaded images, for example a CDN/custom domain. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:8081,https://yourbar.app,https://www.yourbar.app` | Comma-separated allowed browser origins for `/api/*`. Keep this in sync with the web clients that call the API. |
 | `IOS_APP_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
 | `ANDROID_PLAY_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
@@ -90,6 +123,42 @@ Response:
   "service": "yourbar-share-api"
 }
 ```
+
+
+### Upload recipe image
+
+Upload images separately from recipe JSON. The form field name must be `image`, and the file must be JPEG, PNG, or WebP. The response `imageUrl` can then be sent in `recipe.imageUrl` when creating a recipe share.
+
+```bash
+curl -i -X POST http://localhost:8787/api/images \
+  -F 'image=@./daiquiri.webp;type=image/webp'
+```
+
+In Windows PowerShell, `curl` is an alias for `Invoke-WebRequest`, which does not support curl's `-F` syntax. Use `curl.exe` explicitly, and use PowerShell's backtick for line continuation:
+
+```powershell
+curl.exe -i -X POST https://api.yourbar.app/api/images `
+  -F "image=@./daiquiri.webp;type=image/webp"
+```
+
+Or run it on one line:
+
+```powershell
+curl.exe -i -X POST https://api.yourbar.app/api/images -F "image=@./daiquiri.webp;type=image/webp"
+```
+
+The `@./daiquiri.webp` path must point to a real file relative to your current terminal directory. If `curl.exe` prints `curl: (26) Failed to open/read local data from file/application`, confirm the file exists with `Test-Path .\daiquiri.webp` or pass an absolute path, for example `-F "image=@C:\projects\yourbar-backend\daiquiri.webp;type=image/webp"`.
+
+Response:
+
+```json
+{
+  "key": "2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp",
+  "imageUrl": "https://api.yourbar.app/images/2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp"
+}
+```
+
+Uploaded image URLs are public read URLs. Store only the returned `imageUrl` in recipe payloads rather than embedding Base64 image data.
 
 ### Create recipe share
 
@@ -238,7 +307,7 @@ For production, generate an `assetlinks.json` file containing your Android packa
 - KV shares expire but are not user-owned and cannot be deleted by end users in this MVP.
 - No rate limiting, bot protection, authentication, spam prevention, or moderation is included.
 - Payload size and schema validation reduce abuse but do not fully prevent unwanted content.
-- Avoid storing personal data or copyrighted images directly in recipe payloads.
+- Avoid storing personal data or copyrighted images directly in recipe payloads; upload image files separately and store only `imageUrl`.
 - CORS is allow-listed through `CORS_ALLOWED_ORIGINS`; add any future web client origins before they call `/api/*`.
 
 ## Future improvements
@@ -248,6 +317,6 @@ For production, generate an `assetlinks.json` file containing your Android packa
 - Authenticated and private shares.
 - Moderation, reporting, and takedown workflows.
 - D1 migration for queryable metadata and operational reporting.
-- Image upload and transformation via R2.
+- Image transformation and thumbnail generation for R2 uploads.
 - Signed delete/update token returned at creation time.
 - Privacy-preserving analytics for share creation and imports.
