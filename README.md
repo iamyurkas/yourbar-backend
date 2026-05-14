@@ -93,11 +93,29 @@ Response:
 
 ### Create recipe share
 
+The repository includes `recipe-share.example.json` as a ready-to-send sample payload. Copy it before editing if you want to keep the original example unchanged:
+
+```bash
+cp recipe-share.example.json recipe-share.json
+```
+
+Then post it to the local Worker:
+
 ```bash
 curl -i -X POST http://localhost:8787/api/recipes \
   -H 'Content-Type: application/json' \
-  -d @recipe-share.json
+  --data-binary @recipe-share.json
 ```
+
+For the deployed API, use the production base URL:
+
+```bash
+curl -i -X POST https://api.yourbar.app/api/recipes \
+  -H 'Content-Type: application/json' \
+  --data-binary @recipe-share.json
+```
+
+In PowerShell, call `curl.exe` rather than the `curl` alias. If you create `recipe-share.json` manually in Windows PowerShell, save it as UTF-8 without a BOM; a BOM at the start of the file makes the Worker return `400 Request body must be valid JSON`.
 
 Response:
 

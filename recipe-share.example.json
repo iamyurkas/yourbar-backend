@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "yourbar.recipeShare",
+  "recipe": {
+    "name": "Daiquiri",
+    "description": "A crisp rum sour.",
+    "instructions": ["Shake with ice.", "Strain into a chilled coupe."],
+    "ingredients": [
+      { "name": "White rum", "amount": 2, "unit": "oz" },
+      { "name": "Fresh lime juice", "amount": 1, "unit": "oz" },
+      { "name": "Simple syrup", "amount": 0.75, "unit": "oz" }
+    ],
+    "glassware": "Coupe",
+    "garnish": "Lime wheel",
+    "method": "Shaken",
+    "tags": ["classic", "rum", "sour"],
+    "servings": 1,
+    "imageUrl": "https://example.com/daiquiri.jpg"
+  },
+  "source": {
+    "app": "yourbar",
+    "appVersion": "1.0.0",
+    "platform": "ios"
+  }
+}
