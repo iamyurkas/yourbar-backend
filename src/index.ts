@@ -152,8 +152,33 @@ function renderInstructionSection(
   return `<section><h2>${escapeHtml(title)}</h2><ol>${items}</ol></section>`;
 }
 
+function displayUnit(ingredient: Ingredient): string | undefined {
+  return ingredient.unitName?.trim() || ingredient.unit?.trim() || ingredient.unitId?.trim() || undefined;
+}
+
+function displayGlassware(recipe: RecipeSharePayloadV1["recipe"]): string | undefined {
+  return recipe.glasswareName?.trim() || recipe.glassware?.trim() || recipe.glasswareId?.trim() || undefined;
+}
+
+function recipeRecordJson(record: RecipeShareRecord): RecipeShareRecord {
+  const { glasswareName: _glasswareName, ingredients, ...recipe } = record.payload.recipe;
+  return {
+    ...record,
+    payload: {
+      ...record.payload,
+      recipe: {
+        ...recipe,
+        ingredients: ingredients.map((ingredient) => {
+          const { unitName: _unitName, ...publicIngredient } = ingredient;
+          return publicIngredient;
+        }),
+      },
+    },
+  };
+}
+
 function renderIngredientAmount(ingredient: Ingredient): string {
-  const parts = [ingredient.amount, ingredient.unit]
+  const parts = [ingredient.amount, displayUnit(ingredient)]
     .filter((part) => part !== undefined && String(part).trim().length > 0)
     .map((part) => String(part).trim());
   return parts.join(" ");
@@ -172,7 +197,8 @@ function renderIngredients(ingredients: Ingredient[]): string {
 
 function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   const details: string[] = [];
-  if (recipe.glassware?.trim()) details.push(`<dt>Glassware</dt><dd>${escapeHtml(recipe.glassware.trim())}</dd>`);
+  const glassware = displayGlassware(recipe);
+  if (glassware) details.push(`<dt>Glassware</dt><dd>${escapeHtml(glassware)}</dd>`);
   if (recipe.garnish?.trim()) details.push(`<dt>Garnish</dt><dd>${escapeHtml(recipe.garnish.trim())}</dd>`);
   if (recipe.servings !== undefined) details.push(`<dt>Servings</dt><dd>${recipe.servings}</dd>`);
   const tags = recipe.tags?.map((tag) => tag.trim()).filter(Boolean) ?? [];
@@ -303,7 +329,7 @@ async function handleGetRecipe(id: string, env: Env): Promise<Response> {
   if (!isValidRecipeId(id)) return jsonError("bad_request", "Invalid recipe id", 400);
   const record = await getRecipeShare(env.RECIPE_SHARES, id);
   if (!record) return jsonError("not_found", "Recipe share was not found", 404);
-  return jsonResponse(record);
+  return jsonResponse(recipeRecordJson(record));
 }
 
 export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): string {

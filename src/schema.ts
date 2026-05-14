@@ -2,6 +2,8 @@ export type Ingredient = {
   name: string;
   amount?: number | string;
   unit?: string;
+  unitId?: string;
+  unitName?: string;
   note?: string;
 };
 
@@ -14,6 +16,8 @@ export type RecipeSharePayloadV1 = {
     instructions?: string | string[];
     ingredients: Ingredient[];
     glassware?: string;
+    glasswareId?: string;
+    glasswareName?: string;
     garnish?: string;
     method?: string | string[];
     tags?: string[];
@@ -111,6 +115,8 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
     stringOrStringArrayLength(recipe.instructions, "recipe.instructions", 8000, issues);
     stringOrStringArrayLength(recipe.method, "recipe.method", 8000, issues);
     optionalString(recipe.glassware, "recipe.glassware", 120, issues);
+    optionalString(recipe.glasswareId, "recipe.glasswareId", 120, issues);
+    optionalString(recipe.glasswareName, "recipe.glasswareName", 120, issues);
     optionalString(recipe.garnish, "recipe.garnish", 240, issues);
     validateHttpUrl(recipe.imageUrl, "recipe.imageUrl", issues);
 
@@ -130,6 +136,8 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
           issues.push({ path: `${path}.amount`, message: "Must be a number or string" });
         }
         optionalString(ingredient.unit, `${path}.unit`, 80, issues);
+        optionalString(ingredient.unitId, `${path}.unitId`, 80, issues);
+        optionalString(ingredient.unitName, `${path}.unitName`, 80, issues);
         optionalString(ingredient.note, `${path}.note`, 240, issues);
       });
     }
