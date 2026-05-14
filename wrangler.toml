@@ -7,6 +7,8 @@ PUBLIC_BASE_URL = "https://api.yourbar.app"
 APP_DEEP_LINK_SCHEME = "yourbar"
 DEFAULT_RECIPE_TTL_SECONDS = "2592000"
 MAX_RECIPE_PAYLOAD_BYTES = "65536"
+MAX_IMAGE_BYTES = "5242880"
+# IMAGE_PUBLIC_BASE_URL = "https://cdn.yourbar.app/images"
 CORS_ALLOWED_ORIGINS = "http://localhost:8081,https://yourbar.app,https://www.yourbar.app"
 # IOS_APP_STORE_URL = "https://apps.apple.com/app/yourbar-placeholder"
 # ANDROID_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=app.yourbar.placeholder"
@@ -17,3 +19,8 @@ CORS_ALLOWED_ORIGINS = "http://localhost:8081,https://yourbar.app,https://www.yo
 binding = "RECIPE_SHARES"
 id = "acb85cb9781546a69352db12a4ce3500"
 preview_id = "54bd8939bd96400b802f70122b9f4d09"
+
+[[r2_buckets]]
+binding = "RECIPE_IMAGES"
+bucket_name = "yourbar-recipe-images"
+preview_bucket_name = "yourbar-recipe-images-preview"

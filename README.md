@@ -5,12 +5,13 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 ## What this service does
 
 - Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`.
+- Accepts recipe image uploads as `multipart/form-data` at `POST /api/images`, stores them in Cloudflare R2, and returns an `imageUrl` that can be attached to recipe payloads.
 - Stores short-lived recipe share records in Cloudflare KV under `recipe:{id}`.
 - Returns a short public link such as `https://api.yourbar.app/r/{id}` and a canonical API URL.
 - Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}`.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
 
-This service intentionally does **not** include authentication, user accounts, moderation, analytics, or image uploads in the MVP.
+This service intentionally does **not** include authentication, user accounts, moderation, or analytics in the MVP.
 
 ## Local setup
 
@@ -51,6 +52,26 @@ preview_id = "<preview namespace id>"
 
 The Worker uses the binding name `RECIPE_SHARES`.
 
+## Cloudflare R2 setup
+
+Create production and preview R2 buckets for uploaded recipe images:
+
+```bash
+npx wrangler r2 bucket create yourbar-recipe-images
+npx wrangler r2 bucket create yourbar-recipe-images-preview
+```
+
+`wrangler.toml` binds those buckets as `RECIPE_IMAGES`:
+
+```toml
+[[r2_buckets]]
+binding = "RECIPE_IMAGES"
+bucket_name = "yourbar-recipe-images"
+preview_bucket_name = "yourbar-recipe-images-preview"
+```
+
+By default, uploaded images are served back through this Worker at `${PUBLIC_BASE_URL}/images/{key}`. If you put R2 behind a CDN or custom public domain, set `IMAGE_PUBLIC_BASE_URL` to that image base URL.
+
 ## Configuration
 
 Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment variables:
@@ -61,6 +82,8 @@ Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment 
 | `APP_DEEP_LINK_SCHEME` | `yourbar` | Custom app scheme for import links. |
 | `DEFAULT_RECIPE_TTL_SECONDS` | `2592000` | KV expiration TTL; default is 30 days. |
 | `MAX_RECIPE_PAYLOAD_BYTES` | `65536` | Maximum raw JSON request body size. |
+| `MAX_IMAGE_BYTES` | `5242880` | Maximum uploaded image size; default is 5 MiB. |
+| `IMAGE_PUBLIC_BASE_URL` | `${PUBLIC_BASE_URL}/images` | Optional public base URL for uploaded images, for example a CDN/custom domain. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:8081,https://yourbar.app,https://www.yourbar.app` | Comma-separated allowed browser origins for `/api/*`. Keep this in sync with the web clients that call the API. |
 | `IOS_APP_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
 | `ANDROID_PLAY_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
@@ -90,6 +113,27 @@ Response:
   "service": "yourbar-share-api"
 }
 ```
+
+
+### Upload recipe image
+
+Upload images separately from recipe JSON. The form field name must be `image`, and the file must be JPEG, PNG, or WebP. The response `imageUrl` can then be sent in `recipe.imageUrl` when creating a recipe share.
+
+```bash
+curl -i -X POST http://localhost:8787/api/images \
+  -F 'image=@./daiquiri.webp;type=image/webp'
+```
+
+Response:
+
+```json
+{
+  "key": "2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp",
+  "imageUrl": "https://api.yourbar.app/images/2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp"
+}
+```
+
+Uploaded image URLs are public read URLs. Store only the returned `imageUrl` in recipe payloads rather than embedding Base64 image data.
 
 ### Create recipe share
 
@@ -238,7 +282,7 @@ For production, generate an `assetlinks.json` file containing your Android packa
 - KV shares expire but are not user-owned and cannot be deleted by end users in this MVP.
 - No rate limiting, bot protection, authentication, spam prevention, or moderation is included.
 - Payload size and schema validation reduce abuse but do not fully prevent unwanted content.
-- Avoid storing personal data or copyrighted images directly in recipe payloads.
+- Avoid storing personal data or copyrighted images directly in recipe payloads; upload image files separately and store only `imageUrl`.
 - CORS is allow-listed through `CORS_ALLOWED_ORIGINS`; add any future web client origins before they call `/api/*`.
 
 ## Future improvements
@@ -248,6 +292,6 @@ For production, generate an `assetlinks.json` file containing your Android packa
 - Authenticated and private shares.
 - Moderation, reporting, and takedown workflows.
 - D1 migration for queryable metadata and operational reporting.
-- Image upload and transformation via R2.
+- Image transformation and thumbnail generation for R2 uploads.
 - Signed delete/update token returned at creation time.
 - Privacy-preserving analytics for share creation and imports.
