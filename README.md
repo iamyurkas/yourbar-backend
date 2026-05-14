@@ -7,6 +7,7 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 - Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`.
 - Accepts recipe image uploads as `multipart/form-data` at `POST /api/images`, stores them in Cloudflare R2, and returns an `imageUrl` that can be attached to recipe payloads.
 - Stores short-lived recipe share records in Cloudflare KV under `recipe:{id}`.
+- Computes a canonical SHA-256 checksum of each recipe before saving and reuses an existing share when the same recipe is posted again.
 - Returns a short public link such as `https://api.yourbar.app/r/{id}` and a canonical API URL.
 - Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}`.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
@@ -170,9 +171,13 @@ Response:
   "id": "AbC234xYz89Q",
   "publicUrl": "https://api.yourbar.app/r/AbC234xYz89Q",
   "apiUrl": "https://api.yourbar.app/api/recipes/AbC234xYz89Q",
-  "expiresAt": "2026-06-13T00:00:00.000Z"
+  "expiresAt": "2026-06-13T00:00:00.000Z",
+  "recipeChecksum": "8a0f...64-hex-chars",
+  "duplicate": false
 }
 ```
+
+If the canonicalized `recipe` object already exists, the Worker returns the existing share with `200 OK` and `"duplicate": true` rather than writing another `recipe:{id}` record. Canonicalization sorts object keys and trims string values before hashing, while preserving array order.
 
 ### Fetch recipe share
 
@@ -194,7 +199,8 @@ Response:
     }
   },
   "createdAt": "2026-05-14T00:00:00.000Z",
-  "expiresAt": "2026-06-13T00:00:00.000Z"
+  "expiresAt": "2026-06-13T00:00:00.000Z",
+  "recipeChecksum": "8a0f...64-hex-chars"
 }
 ```
 
