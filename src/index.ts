@@ -128,10 +128,27 @@ function normalizeTextLines(value: string | string[] | undefined): string[] {
   return values.map((item) => item.trim()).filter(Boolean);
 }
 
-function renderInstructionSection(title: string, value: string | string[] | undefined): string {
-  const steps = normalizeTextLines(value);
+function renderInlineMarkup(value: string): string {
+  return escapeHtml(value)
+    .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+?)\*/g, "$1<em>$2</em>");
+}
+
+function capitalizeFirstLetter(value: string): string {
+  return value.replace(/^(\P{L}*)(\p{L})/u, (_match, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase()}`);
+}
+
+function renderInstructionSection(
+  title: string,
+  value: string | string[] | undefined,
+  options: { capitalizeFirstLetter?: boolean; singleAsParagraph?: boolean } = {},
+): string {
+  const steps = normalizeTextLines(value).map((step) => (options.capitalizeFirstLetter ? capitalizeFirstLetter(step) : step));
   if (steps.length === 0) return "";
-  const items = steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+  if (options.singleAsParagraph && steps.length === 1) {
+    return `<section><h2>${escapeHtml(title)}</h2><p>${renderInlineMarkup(steps[0] ?? "")}</p></section>`;
+  }
+  const items = steps.map((step) => `<li>${renderInlineMarkup(step)}</li>`).join("");
   return `<section><h2>${escapeHtml(title)}</h2><ol>${items}</ol></section>`;
 }
 
@@ -311,7 +328,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const image = escapedImageUrl ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">` : "";
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
-  const methodSection = renderInstructionSection("Method", recipe.method);
+  const methodSection = renderInstructionSection("Method", recipe.method, { capitalizeFirstLetter: true, singleAsParagraph: true });
   const instructionsSection = renderInstructionSection("Instructions", recipe.instructions);
 
   return `<!doctype html>
@@ -356,7 +373,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     <div class="content">
       <p class="eyebrow">YourBar cocktail recipe</p>
       <h1>${escapedRecipeName}</h1>
-      <p>${escapedDescription}</p>
+      <p>${renderInlineMarkup(description)}</p>
       ${detailsSection}
       ${ingredientsSection}
       ${methodSection}

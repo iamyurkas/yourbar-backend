@@ -158,6 +158,31 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /classic/);
 });
 
+test('landing page renders inline markup and a single capitalized method without numbering', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        description: 'A **crisp** Cuban *classic*.',
+        method: 'shake',
+        instructions: ['Add **rum**.', 'Serve *cold*.'],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /<p>A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
+  assert.match(html, /<section>\s*<h2>Method<\/h2>\s*<p>Shake<\/p>\s*<\/section>/);
+  assert.match(html, /<li>Add <strong>rum<\/strong>\.<\/li>/);
+  assert.match(html, /<li>Serve <em>cold<\/em>\.<\/li>/);
+});
+
 test('JSON error helper returns a consistent error body', async () => {
   const response = jsonError('bad_request', 'Bad request', 400);
   assert.equal(response.status, 400);
