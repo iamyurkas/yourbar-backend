@@ -342,7 +342,7 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
 });
 
-test('route integration omits unit and glassware display names from recipe JSON', async () => {
+test('route integration keeps unit and glassware ids in JSON while names render only on the landing page', async () => {
   const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
   const payload = {
     ...validPayload,
@@ -369,6 +369,15 @@ test('route integration omits unit and glassware display names from recipe JSON'
   assert.equal(stored.payload.recipe.glasswareName, undefined);
   assert.equal(stored.payload.recipe.ingredients[0].unitId, 'unit-ml');
   assert.equal(stored.payload.recipe.ingredients[0].unitName, undefined);
+
+  const landing = await handleRequest(new Request(created.publicUrl), bindings);
+  assert.equal(landing.status, 200);
+  assert.equal(landing.headers.get('Content-Type'), 'text/html; charset=utf-8');
+  const html = await landing.text();
+  assert.match(html, /<span class="amount">60 ml<\/span>/);
+  assert.match(html, /<dt>Glassware<\/dt><dd>Coupe<\/dd>/);
+  assert.doesNotMatch(html, /unit-ml/);
+  assert.doesNotMatch(html, /glass-123/);
 });
 
 
