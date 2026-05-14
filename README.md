@@ -54,7 +54,9 @@ The Worker uses the binding name `RECIPE_SHARES`.
 
 ## Cloudflare R2 setup
 
-Create production and preview R2 buckets for uploaded recipe images:
+Before creating buckets, make sure R2 is enabled for the Cloudflare account in the Cloudflare Dashboard under **R2 object storage**. If Wrangler returns `Please enable R2 through the Cloudflare Dashboard. [code: 10042]`, open the dashboard, enable R2 for the selected account, and then rerun the bucket creation commands.
+
+Create production and preview R2 buckets for uploaded recipe images after R2 is enabled:
 
 ```bash
 npx wrangler r2 bucket create yourbar-recipe-images
