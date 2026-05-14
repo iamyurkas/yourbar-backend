@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-05-14"
 
 [vars]
-PUBLIC_BASE_URL = "http://localhost:8787"
+PUBLIC_BASE_URL = "https://api.yourbar.app"
 APP_DEEP_LINK_SCHEME = "yourbar"
 DEFAULT_RECIPE_TTL_SECONDS = "2592000"
 MAX_RECIPE_PAYLOAD_BYTES = "65536"
@@ -15,5 +15,5 @@ MAX_RECIPE_PAYLOAD_BYTES = "65536"
 
 [[kv_namespaces]]
 binding = "RECIPE_SHARES"
-id = "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+id = "acb85cb9781546a69352db12a4ce3500"
+preview_id = "54bd8939bd96400b802f70122b9f4d09"
