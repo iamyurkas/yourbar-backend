@@ -33,7 +33,7 @@ class MockKV {
 function env(overrides = {}) {
   return {
     RECIPE_SHARES: new MockKV(),
-    PUBLIC_BASE_URL: 'https://yourbar.app',
+    PUBLIC_BASE_URL: 'https://api.yourbar.app',
     ...overrides,
   };
 }
@@ -90,19 +90,19 @@ test('JSON error helper returns a consistent error body', async () => {
 });
 
 test('CORS allows all origins when no allow-list is configured', () => {
-  const request = new Request('https://yourbar.app/api/recipes', { headers: { Origin: 'https://app.example' } });
+  const request = new Request('https://api.yourbar.app/api/recipes', { headers: { Origin: 'https://app.example' } });
   const response = withCors(new Response('ok'), request, undefined);
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
 });
 
 test('CORS echoes allowed origins when an allow-list is configured', () => {
-  const request = new Request('https://yourbar.app/api/recipes', { headers: { Origin: 'https://app.example' } });
+  const request = new Request('https://api.yourbar.app/api/recipes', { headers: { Origin: 'https://app.example' } });
   const response = withCors(new Response('ok'), request, 'https://app.example');
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://app.example');
 });
 
 test('CORS preflight is supported', () => {
-  const request = new Request('https://yourbar.app/api/recipes', {
+  const request = new Request('https://api.yourbar.app/api/recipes', {
     method: 'OPTIONS',
     headers: { Origin: 'https://app.example', 'Access-Control-Request-Headers': 'content-type' },
   });
@@ -111,9 +111,20 @@ test('CORS preflight is supported', () => {
   assert.match(response.headers.get('Access-Control-Allow-Methods'), /POST/);
 });
 
+test('route integration echoes configured CORS origin', async () => {
+  const bindings = env({ CORS_ALLOWED_ORIGINS: 'http://localhost:8081,https://yourbar.app,https://www.yourbar.app' });
+  const response = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://yourbar.app', 'Access-Control-Request-Headers': 'content-type' },
+  }), bindings);
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://yourbar.app');
+});
+
 test('route integration creates and retrieves a recipe share using mocked KV', async () => {
   const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
-  const create = await handleRequest(new Request('https://yourbar.app/api/recipes', {
+  const create = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: 'https://mobile.example' },
     body: JSON.stringify(validPayload),
@@ -122,6 +133,9 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   assert.equal(create.status, 201);
   assert.equal(create.headers.get('Access-Control-Allow-Origin'), '*');
   const created = await create.json();
+
+  assert.match(created.publicUrl, /^https:\/\/api\.yourbar\.app\/r\//);
+  assert.match(created.apiUrl, /^https:\/\/api\.yourbar\.app\/api\/recipes\//);
 
   const get = await handleRequest(new Request(created.apiUrl), bindings);
   assert.equal(get.status, 200);

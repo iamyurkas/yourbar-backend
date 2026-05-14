@@ -61,7 +61,7 @@ Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment 
 | `APP_DEEP_LINK_SCHEME` | `yourbar` | Custom app scheme for import links. |
 | `DEFAULT_RECIPE_TTL_SECONDS` | `2592000` | KV expiration TTL; default is 30 days. |
 | `MAX_RECIPE_PAYLOAD_BYTES` | `65536` | Maximum raw JSON request body size. |
-| `CORS_ALLOWED_ORIGINS` | empty | Comma-separated allowed origins for `/api/*`; empty allows all origins for MVP. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:8081,https://yourbar.app,https://www.yourbar.app` | Comma-separated allowed browser origins for `/api/*`. Keep this in sync with the web clients that call the API. |
 | `IOS_APP_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
 | `ANDROID_PLAY_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
 | `APPLE_APP_SITE_ASSOCIATION_JSON` | unset | Optional raw JSON string for iOS Universal Links. |
@@ -239,7 +239,7 @@ For production, generate an `assetlinks.json` file containing your Android packa
 - No rate limiting, bot protection, authentication, spam prevention, or moderation is included.
 - Payload size and schema validation reduce abuse but do not fully prevent unwanted content.
 - Avoid storing personal data or copyrighted images directly in recipe payloads.
-- CORS defaults to allowing all origins when `CORS_ALLOWED_ORIGINS` is empty for MVP convenience.
+- CORS is allow-listed through `CORS_ALLOWED_ORIGINS`; add any future web client origins before they call `/api/*`.
 
 ## Future improvements
 
