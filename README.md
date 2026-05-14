@@ -6,7 +6,7 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 
 - Accepts `RecipeSharePayloadV1` JSON at `POST /api/recipes`.
 - Stores short-lived recipe share records in Cloudflare KV under `recipe:{id}`.
-- Returns a short public link such as `https://yourbar.app/r/{id}` and a canonical API URL.
+- Returns a short public link such as `https://api.yourbar.app/r/{id}` and a canonical API URL.
 - Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}`.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
 
@@ -104,8 +104,8 @@ Response:
 ```json
 {
   "id": "AbC234xYz89Q",
-  "publicUrl": "https://yourbar.app/r/AbC234xYz89Q",
-  "apiUrl": "https://yourbar.app/api/recipes/AbC234xYz89Q",
+  "publicUrl": "https://api.yourbar.app/r/AbC234xYz89Q",
+  "apiUrl": "https://api.yourbar.app/api/recipes/AbC234xYz89Q",
   "expiresAt": "2026-06-13T00:00:00.000Z"
 }
 ```
@@ -113,7 +113,7 @@ Response:
 ### Fetch recipe share
 
 ```bash
-curl https://yourbar.app/api/recipes/AbC234xYz89Q
+curl https://api.yourbar.app/api/recipes/AbC234xYz89Q
 ```
 
 Response:
@@ -178,13 +178,17 @@ Response:
 }
 ```
 
-## Custom domain: `yourbar.app`
+## Custom domain: `api.yourbar.app`
 
-1. Add `yourbar.app` to Cloudflare DNS.
+Use the `api.yourbar.app` subdomain for this Worker so the root domain (`yourbar.app`) remains available for a marketing site, web app, or other public website later.
+
+1. Add `yourbar.app` to Cloudflare DNS and make sure the zone is active.
 2. Deploy the Worker with `npm run deploy`.
-3. In Cloudflare Workers routes or custom domains, attach this Worker to `https://yourbar.app/*`.
-4. Set `PUBLIC_BASE_URL=https://yourbar.app` in the production environment.
+3. In Cloudflare Workers custom domains, attach this Worker to `https://api.yourbar.app`. In the Cloudflare dashboard, open Workers & Pages → `yourbar-share-api` → Domains → Add Domain → select `yourbar.app` → enter `api` as the optional subdomain.
+4. Set `PUBLIC_BASE_URL=https://api.yourbar.app` in the production environment.
 5. Ensure the Expo app handles the custom deep link scheme `yourbar://import/recipe/{id}`.
+
+If you later decide the public recipe links should live on the root domain, attach the Worker or a website route to `https://yourbar.app/r/*` and update `PUBLIC_BASE_URL` accordingly.
 
 ## Universal Links and App Links
 
@@ -202,13 +206,13 @@ The route `GET /.well-known/apple-app-site-association` returns either `APPLE_AP
 }
 ```
 
-For production, replace it with the JSON Apple expects for your Team ID and bundle ID. Do not add a `.json` extension to the route. Add the Associated Domains capability in the iOS app with `applinks:yourbar.app`.
+For production, replace it with the JSON Apple expects for your Team ID and bundle ID. Do not add a `.json` extension to the route. Add the Associated Domains capability in the iOS app with `applinks:api.yourbar.app`.
 
 ### Android App Links
 
 The route `GET /.well-known/assetlinks.json` returns `ANDROID_ASSET_LINKS_JSON` when configured. Otherwise it returns an empty JSON array (`[]`) as a safe placeholder.
 
-For production, generate an `assetlinks.json` file containing your Android package name and SHA-256 certificate fingerprint, configure the app intent filter for `https://yourbar.app/r/*`, and set the raw JSON string in `ANDROID_ASSET_LINKS_JSON`.
+For production, generate an `assetlinks.json` file containing your Android package name and SHA-256 certificate fingerprint, configure the app intent filter for `https://api.yourbar.app/r/*`, and set the raw JSON string in `ANDROID_ASSET_LINKS_JSON`.
 
 ## Security and abuse limitations of the MVP
 
