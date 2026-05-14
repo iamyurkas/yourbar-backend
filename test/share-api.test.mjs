@@ -65,6 +65,23 @@ test('payload validation accepts a valid RecipeSharePayloadV1', () => {
   assert.equal(result.ok, true);
 });
 
+test('payload validation accepts unit and glassware ids with display names', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      glasswareId: 'coupe-glass',
+      glasswareName: 'Coupe',
+      ingredients: [
+        { name: 'Rum', amount: 60, unitId: 'ml', unitName: 'ml' },
+        { name: 'Lime juice', amount: 30, unitId: 'ml', unitName: 'ml' },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test('payload validation rejects missing recipe.name', () => {
   const result = validateRecipeSharePayloadV1({ ...validPayload, recipe: { ...validPayload.recipe, name: '' } });
   assert.equal(result.ok, false);
@@ -156,6 +173,34 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /Coupe/);
   assert.match(html, /Lime wheel/);
   assert.match(html, /classic/);
+});
+
+test('landing page prefers display names for units and glassware', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        glasswareId: 'glass-123',
+        glasswareName: 'Nick & Nora',
+        ingredients: [
+          { name: 'Gin', amount: 45, unitId: 'unit-ml', unitName: 'ml' },
+          { name: 'Vermouth', amount: 20, unitId: 'unit-ml', unitName: 'ml' },
+        ],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /<span class="amount">45 ml<\/span>/);
+  assert.match(html, /Nick &amp; Nora/);
+  assert.doesNotMatch(html, /glass-123/);
+  assert.doesNotMatch(html, /unit-ml/);
 });
 
 test('landing page renders inline markup and a single capitalized method without numbering', () => {
@@ -295,6 +340,35 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   const stored = await get.json();
   assert.equal(stored.id, created.id);
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
+});
+
+test('route integration omits unit and glassware display names from recipe JSON', async () => {
+  const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
+  const payload = {
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      glasswareId: 'glass-123',
+      glasswareName: 'Coupe',
+      ingredients: [
+        { name: 'Rum', amount: 60, unitId: 'unit-ml', unitName: 'ml' },
+      ],
+    },
+  };
+  const create = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }), bindings);
+  const created = await create.json();
+
+  const get = await handleRequest(new Request(created.apiUrl), bindings);
+  assert.equal(get.status, 200);
+  const stored = await get.json();
+  assert.equal(stored.payload.recipe.glasswareId, 'glass-123');
+  assert.equal(stored.payload.recipe.glasswareName, undefined);
+  assert.equal(stored.payload.recipe.ingredients[0].unitId, 'unit-ml');
+  assert.equal(stored.payload.recipe.ingredients[0].unitName, undefined);
 });
 
 

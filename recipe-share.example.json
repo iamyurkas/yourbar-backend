@@ -6,11 +6,12 @@
     "description": "A crisp rum sour.",
     "instructions": ["Shake with ice.", "Strain into a chilled coupe."],
     "ingredients": [
-      { "name": "White rum", "amount": 2, "unit": "oz" },
-      { "name": "Fresh lime juice", "amount": 1, "unit": "oz" },
-      { "name": "Simple syrup", "amount": 0.75, "unit": "oz" }
+      { "name": "White rum", "amount": 60, "unitId": "unit-ml", "unitName": "ml" },
+      { "name": "Fresh lime juice", "amount": 30, "unitId": "unit-ml", "unitName": "ml" },
+      { "name": "Simple syrup", "amount": 22.5, "unitId": "unit-ml", "unitName": "ml" }
     ],
-    "glassware": "Coupe",
+    "glasswareId": "glass-coupe",
+    "glasswareName": "Coupe",
     "garnish": "Lime wheel",
     "method": "Shaken",
     "tags": ["classic", "rum", "sour"],
