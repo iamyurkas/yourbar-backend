@@ -26,6 +26,9 @@ export interface Env {
   CORS_ALLOWED_ORIGINS?: string;
   IOS_APP_STORE_URL?: string;
   ANDROID_PLAY_STORE_URL?: string;
+  IOS_APP_IDS?: string;
+  ANDROID_PACKAGE_NAME?: string;
+  ANDROID_SHA256_CERT_FINGERPRINTS?: string;
   APPLE_APP_SITE_ASSOCIATION_JSON?: string;
   ANDROID_ASSET_LINKS_JSON?: string;
 }
@@ -307,16 +310,52 @@ async function handleRecipeLanding(id: string, env: Env): Promise<Response> {
   return htmlResponse(renderRecipeLandingPage(record, env));
 }
 
+function commaSeparatedValues(value: string | undefined): string[] {
+  return value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+}
+
+function appleAppSiteAssociation(env: Env): unknown {
+  const appIDs = commaSeparatedValues(env.IOS_APP_IDS);
+  return {
+    applinks: {
+      details: [
+        {
+          appIDs,
+          paths: ["/r/*"],
+          components: [{ "/": "/r/*", comment: "Matches YourBar recipe share links" }],
+        },
+      ],
+    },
+  };
+}
+
+function androidAssetLinks(env: Env): unknown {
+  const packageName = env.ANDROID_PACKAGE_NAME?.trim();
+  const fingerprints = commaSeparatedValues(env.ANDROID_SHA256_CERT_FINGERPRINTS);
+  if (!packageName || fingerprints.length === 0) return [];
+
+  return [
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: packageName,
+        sha256_cert_fingerprints: fingerprints,
+      },
+    },
+  ];
+}
+
 function wellKnownJson(rawJson: string | undefined, fallback: unknown): Response {
   if (rawJson?.trim()) {
     try {
       JSON.parse(rawJson);
-      return new Response(rawJson, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+      return new Response(rawJson, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
     } catch {
       return jsonError("internal_error", "Configured well-known JSON is invalid", 500);
     }
   }
-  return jsonResponse(fallback);
+  return jsonResponse(fallback, 200, { "Cache-Control": "public, max-age=3600" });
 }
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
@@ -358,11 +397,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
         : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
     } else if (path === "/.well-known/apple-app-site-association") {
       response = request.method === "GET"
-        ? wellKnownJson(env.APPLE_APP_SITE_ASSOCIATION_JSON, { applinks: { details: [{ appIDs: [], paths: ["/r/*"], components: [{ "/": "/r/*" }] }] } })
+        ? wellKnownJson(env.APPLE_APP_SITE_ASSOCIATION_JSON, appleAppSiteAssociation(env))
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else if (path === "/.well-known/assetlinks.json") {
       response = request.method === "GET"
-        ? wellKnownJson(env.ANDROID_ASSET_LINKS_JSON, [])
+        ? wellKnownJson(env.ANDROID_ASSET_LINKS_JSON, androidAssetLinks(env))
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else {
       response = jsonError("not_found", "Not found", 404);

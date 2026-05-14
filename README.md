@@ -90,8 +90,11 @@ Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment 
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:8081,https://yourbar.app,https://www.yourbar.app` | Comma-separated allowed browser origins for `/api/*`. Keep this in sync with the web clients that call the API. |
 | `IOS_APP_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
 | `ANDROID_PLAY_STORE_URL` | unset | Optional install link shown on landing pages. Use a placeholder until the real listing exists. |
-| `APPLE_APP_SITE_ASSOCIATION_JSON` | unset | Optional raw JSON string for iOS Universal Links. |
-| `ANDROID_ASSET_LINKS_JSON` | unset | Optional raw JSON string for Android App Links. |
+| `IOS_APP_IDS` | unset | Comma-separated iOS app IDs in `TEAMID.bundle.id` format used to generate `/.well-known/apple-app-site-association`. |
+| `ANDROID_PACKAGE_NAME` | unset | Android package name used to generate `/.well-known/assetlinks.json`. |
+| `ANDROID_SHA256_CERT_FINGERPRINTS` | unset | Comma-separated Android signing certificate SHA-256 fingerprints used to generate `/.well-known/assetlinks.json`. |
+| `APPLE_APP_SITE_ASSOCIATION_JSON` | unset | Optional raw JSON string for iOS Universal Links. Overrides generated output from `IOS_APP_IDS`. |
+| `ANDROID_ASSET_LINKS_JSON` | unset | Optional raw JSON string for Android App Links. Overrides generated output from Android package/fingerprint variables. |
 
 Do not commit secrets or real unpublished app identifiers unless they are intended to be public. If you prefer Cloudflare secrets for raw JSON values, use:
 
@@ -264,25 +267,55 @@ If you later decide the public recipe links should live on the root domain, atta
 
 ### iOS Universal Links
 
-The route `GET /.well-known/apple-app-site-association` returns either `APPLE_APP_SITE_ASSOCIATION_JSON` or a placeholder document:
+The route `GET /.well-known/apple-app-site-association` returns the Apple association document directly from the Worker with `Content-Type: application/json`. Configure `IOS_APP_IDS` as a comma-separated list of app IDs in `TEAMID.bundle.id` format, for example:
+
+```toml
+IOS_APP_IDS = "ABCDE12345.app.yourbar.ios,ABCDE12345.app.yourbar.ios.dev"
+```
+
+The generated document matches recipe share URLs under `/r/*`:
 
 ```json
 {
   "applinks": {
     "details": [
-      { "appIDs": [], "paths": ["/r/*"], "components": [{ "/": "/r/*" }] }
+      {
+        "appIDs": ["ABCDE12345.app.yourbar.ios"],
+        "paths": ["/r/*"],
+        "components": [{ "/": "/r/*", "comment": "Matches YourBar recipe share links" }]
+      }
     ]
   }
 }
 ```
 
-For production, replace it with the JSON Apple expects for your Team ID and bundle ID. Do not add a `.json` extension to the route. Add the Associated Domains capability in the iOS app with `applinks:api.yourbar.app`.
+If you need a fully custom Apple document, set `APPLE_APP_SITE_ASSOCIATION_JSON`; it overrides the generated output. Do not add a `.json` extension to the route. Add the Associated Domains capability in the iOS app with `applinks:api.yourbar.app`.
 
 ### Android App Links
 
-The route `GET /.well-known/assetlinks.json` returns `ANDROID_ASSET_LINKS_JSON` when configured. Otherwise it returns an empty JSON array (`[]`) as a safe placeholder.
+The route `GET /.well-known/assetlinks.json` returns the Android association document directly from the Worker with `Content-Type: application/json`. Configure the package name and one or more signing certificate SHA-256 fingerprints, for example:
 
-For production, generate an `assetlinks.json` file containing your Android package name and SHA-256 certificate fingerprint, configure the app intent filter for `https://api.yourbar.app/r/*`, and set the raw JSON string in `ANDROID_ASSET_LINKS_JSON`.
+```toml
+ANDROID_PACKAGE_NAME = "app.yourbar"
+ANDROID_SHA256_CERT_FINGERPRINTS = "AA:BB:CC:..."
+```
+
+The generated document delegates URL handling for `https://api.yourbar.app/r/*` to the configured Android app:
+
+```json
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.yourbar",
+      "sha256_cert_fingerprints": ["AA:BB:CC:..."]
+    }
+  }
+]
+```
+
+If you need a fully custom Android document, set `ANDROID_ASSET_LINKS_JSON`; it overrides the generated output. Configure the app intent filter for `https://api.yourbar.app/r/*` and deploy with the same signing certificate fingerprint listed here.
 
 ## Security and abuse limitations of the MVP
 

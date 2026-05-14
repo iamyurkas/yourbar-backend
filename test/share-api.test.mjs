@@ -154,6 +154,59 @@ test('route integration echoes configured CORS origin', async () => {
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://yourbar.app');
 });
 
+
+test('well-known apple app site association is generated from configured iOS app IDs', async () => {
+  const response = await handleRequest(new Request('https://api.yourbar.app/.well-known/apple-app-site-association'), env({
+    IOS_APP_IDS: 'ABCDE12345.app.yourbar.ios, ABCDE12345.app.yourbar.ios.dev',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'application/json; charset=utf-8');
+  assert.equal(response.headers.get('Cache-Control'), 'public, max-age=3600');
+  assert.deepEqual(await response.json(), {
+    applinks: {
+      details: [
+        {
+          appIDs: ['ABCDE12345.app.yourbar.ios', 'ABCDE12345.app.yourbar.ios.dev'],
+          paths: ['/r/*'],
+          components: [{ '/': '/r/*', comment: 'Matches YourBar recipe share links' }],
+        },
+      ],
+    },
+  });
+});
+
+test('well-known android asset links are generated from package and signing fingerprints', async () => {
+  const response = await handleRequest(new Request('https://api.yourbar.app/.well-known/assetlinks.json'), env({
+    ANDROID_PACKAGE_NAME: 'app.yourbar',
+    ANDROID_SHA256_CERT_FINGERPRINTS: '11:22:33, AA:BB:CC',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'application/json; charset=utf-8');
+  assert.deepEqual(await response.json(), [
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'app.yourbar',
+        sha256_cert_fingerprints: ['11:22:33', 'AA:BB:CC'],
+      },
+    },
+  ]);
+});
+
+test('well-known raw JSON overrides generated association documents', async () => {
+  const response = await handleRequest(new Request('https://api.yourbar.app/.well-known/assetlinks.json'), env({
+    ANDROID_PACKAGE_NAME: 'app.yourbar',
+    ANDROID_SHA256_CERT_FINGERPRINTS: '11:22:33',
+    ANDROID_ASSET_LINKS_JSON: '[{"custom":true}]',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), [{ custom: true }]);
+});
+
 test('route integration creates and retrieves a recipe share using mocked KV', async () => {
   const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
   const create = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
