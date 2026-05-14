@@ -115,6 +115,74 @@ test('landing page escapes recipe names', () => {
   assert.equal(escapeHtml('Tom & Jerry'), 'Tom &amp; Jerry');
 });
 
+test('landing page includes the full recipe and image when available', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        description: 'A crisp Cuban classic.',
+        imageUrl: 'https://api.yourbar.app/images/daiquiri.webp',
+        ingredients: [
+          { name: 'White rum', amount: 2, unit: 'oz' },
+          { name: 'Lime juice', amount: 1, unit: 'oz', note: 'fresh' },
+          { name: 'Simple syrup', amount: 0.75, unit: 'oz' },
+        ],
+        method: ['Shake with ice.', 'Fine strain into the glass.'],
+        instructions: 'Garnish and serve immediately.',
+        glassware: 'Coupe',
+        garnish: 'Lime wheel',
+        servings: 1,
+        tags: ['classic', 'sour'],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp">/);
+  assert.match(html, /White rum/);
+  assert.match(html, /<span class="amount">2 oz<\/span>/);
+  assert.match(html, /Lime juice/);
+  assert.match(html, /\(fresh\)/);
+  assert.match(html, /Shake with ice\./);
+  assert.match(html, /Fine strain into the glass\./);
+  assert.match(html, /Garnish and serve immediately\./);
+  assert.match(html, /Coupe/);
+  assert.match(html, /Lime wheel/);
+  assert.match(html, /classic/);
+});
+
+test('landing page renders inline markup and a single capitalized method without numbering', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        description: 'A **crisp** Cuban *classic*.',
+        method: 'shake',
+        instructions: ['Add **rum**.', 'Serve *cold*.'],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /<p>A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
+  assert.match(html, /<section>\s*<h2>Method<\/h2>\s*<p>Shake<\/p>\s*<\/section>/);
+  assert.match(html, /<li>Add <strong>rum<\/strong>\.<\/li>/);
+  assert.match(html, /<li>Serve <em>cold<\/em>\.<\/li>/);
+});
+
 test('JSON error helper returns a consistent error body', async () => {
   const response = jsonError('bad_request', 'Bad request', 400);
   assert.equal(response.status, 400);
