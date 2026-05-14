@@ -3,12 +3,26 @@ import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, 
 import { getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
 import { validateRecipeSharePayloadV1 } from "./schema.js";
 
+type RecipeImageObject = {
+  body: BodyInit;
+  httpEtag: string;
+  writeHttpMetadata(headers: Headers): void;
+};
+
+type RecipeImageBucket = {
+  get(key: string): Promise<RecipeImageObject | null>;
+  put(key: string, value: ArrayBuffer, options?: { httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
+};
+
 export interface Env {
   RECIPE_SHARES: KVNamespace;
+  RECIPE_IMAGES?: RecipeImageBucket;
   PUBLIC_BASE_URL?: string;
   APP_DEEP_LINK_SCHEME?: string;
   DEFAULT_RECIPE_TTL_SECONDS?: string;
   MAX_RECIPE_PAYLOAD_BYTES?: string;
+  MAX_IMAGE_BYTES?: string;
+  IMAGE_PUBLIC_BASE_URL?: string;
   CORS_ALLOWED_ORIGINS?: string;
   IOS_APP_STORE_URL?: string;
   ANDROID_PLAY_STORE_URL?: string;
@@ -17,6 +31,13 @@ export interface Env {
 }
 
 const SERVICE_NAME = "yourbar-share-api";
+const IMAGE_FIELD_NAME = "image";
+const IMAGE_KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp)$/i;
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 
 function envNumber(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -28,8 +49,16 @@ function publicBaseUrl(env: Env): string {
   return (env.PUBLIC_BASE_URL ?? "http://localhost:8787").replace(/\/+$/, "");
 }
 
+function imagePublicBaseUrl(env: Env): string {
+  return (env.IMAGE_PUBLIC_BASE_URL ?? `${publicBaseUrl(env)}/images`).replace(/\/+$/, "");
+}
+
 function deepLinkScheme(env: Env): string {
   return env.APP_DEEP_LINK_SCHEME ?? "yourbar";
+}
+
+function isMultipartFormData(contentType: string | null): boolean {
+  return contentType?.toLowerCase().split(";")[0]?.trim() === "multipart/form-data";
 }
 
 async function readJsonWithLimit(request: Request, maxBytes: number): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }> {
@@ -56,6 +85,85 @@ function recipeUrls(env: Env, id: string): { publicUrl: string; apiUrl: string }
     publicUrl: `${base}/r/${id}`,
     apiUrl: `${base}/api/recipes/${id}`,
   };
+}
+
+function imageObjectKey(contentType: string): string {
+  const extension = ALLOWED_IMAGE_TYPES[contentType] ?? "bin";
+  return `${crypto.randomUUID()}.${extension}`;
+}
+
+async function handlePostImage(request: Request, env: Env): Promise<Response> {
+  if (!env.RECIPE_IMAGES) {
+    return jsonError("storage_not_configured", "Image storage is not configured", 503);
+  }
+
+  if (!isMultipartFormData(request.headers.get("Content-Type"))) {
+    return jsonError("unsupported_media_type", "Content-Type must be multipart/form-data", 415);
+  }
+
+  const maxBytes = envNumber(env.MAX_IMAGE_BYTES, 5_242_880);
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength && Number(contentLength) > maxBytes) {
+    return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
+  }
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return jsonError("bad_request", "Request body must be valid multipart form data", 400);
+  }
+
+  const image = form.get(IMAGE_FIELD_NAME);
+  if (!(image instanceof File)) {
+    return jsonError("validation_failed", `Multipart form must include an image file in the "${IMAGE_FIELD_NAME}" field`, 400);
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(ALLOWED_IMAGE_TYPES, image.type)) {
+    return jsonError("validation_failed", "Image must be a JPEG, PNG, or WebP file", 400, [{ path: IMAGE_FIELD_NAME, message: "Unsupported image content type" }]);
+  }
+
+  if (image.size < 1) {
+    return jsonError("validation_failed", "Image file must not be empty", 400, [{ path: IMAGE_FIELD_NAME, message: "Must not be empty" }]);
+  }
+
+  if (image.size > maxBytes) {
+    return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
+  }
+
+  const key = imageObjectKey(image.type);
+  const bytes = await image.arrayBuffer();
+  if (bytes.byteLength > maxBytes) {
+    return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
+  }
+
+  await env.RECIPE_IMAGES.put(key, bytes, {
+    httpMetadata: { contentType: image.type },
+    customMetadata: { originalName: image.name.slice(0, 256) },
+  });
+
+  return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}` }, 201);
+}
+
+async function handleGetImage(key: string, env: Env): Promise<Response> {
+  if (!env.RECIPE_IMAGES) {
+    return jsonError("storage_not_configured", "Image storage is not configured", 503);
+  }
+
+  if (!IMAGE_KEY_PATTERN.test(key)) {
+    return jsonError("bad_request", "Invalid image key", 400);
+  }
+
+  const object = await env.RECIPE_IMAGES.get(key);
+  if (!object) return jsonError("not_found", "Image was not found", 404);
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("X-Content-Type-Options", "nosniff");
+
+  return new Response(object.body, { headers });
 }
 
 async function handlePostRecipe(request: Request, env: Env): Promise<Response> {
@@ -182,6 +290,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? jsonResponse({ ok: true, service: SERVICE_NAME })
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+    } else if (path === "/api/images") {
+      response = request.method === "POST"
+        ? await handlePostImage(request, env)
+        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "POST, OPTIONS" });
     } else if (path === "/api/recipes") {
       response = request.method === "POST"
         ? await handlePostRecipe(request, env)
@@ -191,6 +303,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? await handleGetRecipe(id, env)
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET, OPTIONS" });
+    } else if (path.startsWith("/images/")) {
+      const key = path.slice("/images/".length);
+      response = request.method === "GET"
+        ? await handleGetImage(key, env)
+        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else if (path.startsWith("/r/")) {
       const id = path.slice("/r/".length);
       response = request.method === "GET"
