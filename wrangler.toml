@@ -1,0 +1,19 @@
+name = "yourbar-share-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-14"
+
+[vars]
+PUBLIC_BASE_URL = "http://localhost:8787"
+APP_DEEP_LINK_SCHEME = "yourbar"
+DEFAULT_RECIPE_TTL_SECONDS = "2592000"
+MAX_RECIPE_PAYLOAD_BYTES = "65536"
+# CORS_ALLOWED_ORIGINS = "http://localhost:8081,https://yourbar.app"
+# IOS_APP_STORE_URL = "https://apps.apple.com/app/yourbar-placeholder"
+# ANDROID_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=app.yourbar.placeholder"
+# APPLE_APP_SITE_ASSOCIATION_JSON = "{...}"
+# ANDROID_ASSET_LINKS_JSON = "[...]"
+
+[[kv_namespaces]]
+binding = "RECIPE_SHARES"
+id = "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
