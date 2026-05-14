@@ -1,7 +1,7 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
 import { getRecipeIdByChecksum, getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
-import { validateRecipeSharePayloadV1 } from "./schema.js";
+import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1 } from "./schema.js";
 
 type RecipeImageObject = {
   body: BodyInit;
@@ -120,6 +120,47 @@ export async function recipeChecksum(recipe: unknown): Promise<string> {
   const canonicalRecipe = JSON.stringify(canonicalizeForChecksum(recipe));
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalRecipe));
   return bytesToHex(digest);
+}
+
+function normalizeTextLines(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  const values = Array.isArray(value) ? value : value.split(/\r?\n/);
+  return values.map((item) => item.trim()).filter(Boolean);
+}
+
+function renderInstructionSection(title: string, value: string | string[] | undefined): string {
+  const steps = normalizeTextLines(value);
+  if (steps.length === 0) return "";
+  const items = steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+  return `<section><h2>${escapeHtml(title)}</h2><ol>${items}</ol></section>`;
+}
+
+function renderIngredientAmount(ingredient: Ingredient): string {
+  const parts = [ingredient.amount, ingredient.unit]
+    .filter((part) => part !== undefined && String(part).trim().length > 0)
+    .map((part) => String(part).trim());
+  return parts.join(" ");
+}
+
+function renderIngredients(ingredients: Ingredient[]): string {
+  const items = ingredients
+    .map((ingredient) => {
+      const amount = renderIngredientAmount(ingredient);
+      const note = ingredient.note?.trim();
+      return `<li>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</li>`;
+    })
+    .join("");
+  return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
+}
+
+function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
+  const details: string[] = [];
+  if (recipe.glassware?.trim()) details.push(`<dt>Glassware</dt><dd>${escapeHtml(recipe.glassware.trim())}</dd>`);
+  if (recipe.garnish?.trim()) details.push(`<dt>Garnish</dt><dd>${escapeHtml(recipe.garnish.trim())}</dd>`);
+  if (recipe.servings !== undefined) details.push(`<dt>Servings</dt><dd>${recipe.servings}</dd>`);
+  const tags = recipe.tags?.map((tag) => tag.trim()).filter(Boolean) ?? [];
+  if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</dd>`);
+  return details.length > 0 ? `<section><h2>Details</h2><dl>${details.join("")}</dl></section>` : "";
 }
 
 async function handlePostImage(request: Request, env: Env): Promise<Response> {
@@ -250,10 +291,13 @@ async function handleGetRecipe(id: string, env: Env): Promise<Response> {
 
 export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): string {
   const { id, payload } = record;
-  const recipeName = payload.recipe.name.trim();
-  const title = `Open ${recipeName} in YourBar`;
+  const recipe = payload.recipe;
+  const recipeName = recipe.name.trim();
+  const title = `${recipeName} cocktail recipe | YourBar`;
   const escapedTitle = escapeHtml(title);
   const escapedRecipeName = escapeHtml(recipeName);
+  const description = recipe.description?.trim() || `Full recipe for ${recipeName}: ingredients, method, and import link for YourBar.`;
+  const escapedDescription = escapeHtml(description);
   const urls = recipeUrls(env, id);
   const apiUrl = escapeHtml(urls.apiUrl);
   const publicUrl = escapeHtml(urls.publicUrl);
@@ -261,6 +305,14 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const escapedDeepLink = escapeHtml(deepLink);
   const iosLink = env.IOS_APP_STORE_URL ? `<a class="secondary" href="${escapeHtml(env.IOS_APP_STORE_URL)}">Install for iOS</a>` : "";
   const androidLink = env.ANDROID_PLAY_STORE_URL ? `<a class="secondary" href="${escapeHtml(env.ANDROID_PLAY_STORE_URL)}">Install for Android</a>` : "";
+  const imageUrl = recipe.imageUrl?.trim();
+  const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
+  const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
+  const image = escapedImageUrl ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">` : "";
+  const detailsSection = renderRecipeDetails(recipe);
+  const ingredientsSection = renderIngredients(recipe.ingredients);
+  const methodSection = renderInstructionSection("Method", recipe.method);
+  const instructionsSection = renderInstructionSection("Instructions", recipe.instructions);
 
   return `<!doctype html>
 <html lang="en">
@@ -270,15 +322,28 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   <meta http-equiv="refresh" content="0; url=${escapedDeepLink}">
   <title>${escapedTitle}</title>
   <meta property="og:title" content="${escapedTitle}">
-  <meta property="og:description" content="Import ${escapedRecipeName} into YourBar.">
-  <meta property="og:type" content="website">
+  <meta name="description" content="${escapedDescription}">
+  <meta property="og:description" content="${escapedDescription}">
+  <meta property="og:type" content="website">${imageMeta}
   <meta property="og:url" content="${publicUrl}">
   <style>
     :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #130f1c; color: #fff7ed; }
-    main { width: min(92vw, 36rem); padding: 2rem; border: 1px solid rgb(255 255 255 / 14%); border-radius: 1.5rem; background: rgb(255 255 255 / 8%); box-shadow: 0 24px 80px rgb(0 0 0 / 35%); }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 2rem 0; background: #130f1c; color: #fff7ed; }
+    main { width: min(92vw, 42rem); overflow: hidden; border: 1px solid rgb(255 255 255 / 14%); border-radius: 1.5rem; background: rgb(255 255 255 / 8%); box-shadow: 0 24px 80px rgb(0 0 0 / 35%); }
+    .content { padding: 2rem; }
+    .eyebrow { margin-top: 0; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.78rem; color: #ffbd86; }
+    .recipe-image { display: block; width: 100%; max-height: 28rem; object-fit: cover; background: rgb(0 0 0 / 28%); }
     h1 { margin: 0 0 0.75rem; font-size: clamp(2rem, 8vw, 3.5rem); line-height: 0.95; }
-    p { color: #f3d9c2; line-height: 1.6; }
+    h2 { margin: 1.75rem 0 0.75rem; font-size: 1.1rem; color: #ffe0c2; }
+    p, li, dd { color: #f3d9c2; line-height: 1.6; }
+    ol, ul { padding-left: 1.35rem; }
+    li + li { margin-top: 0.35rem; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; }
+    dt { color: #ffbd86; font-weight: 700; }
+    dd { margin: 0; }
+    .amount { color: #fff7ed; font-weight: 700; }
+    .note { color: #d7b89d; }
+    .tag { display: inline-block; margin: 0 0.3rem 0.3rem 0; padding: 0.15rem 0.55rem; border-radius: 999px; background: rgb(255 255 255 / 12%); color: #ffe0c2; }
     a.button, a.secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; text-decoration: none; font-weight: 700; }
     a.button { background: #ff8a3d; color: #1f1208; }
     a.secondary { margin-top: 0.75rem; margin-right: 0.5rem; border: 1px solid rgb(255 255 255 / 22%); color: #fff7ed; }
@@ -287,13 +352,26 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
 </head>
 <body>
   <main>
-    <p>YourBar recipe share</p>
-    <h1>${escapedRecipeName}</h1>
-    <p>If YourBar is installed, this page will try to open the app automatically. You can also use the button below.</p>
-    <p><a class="button" href="${escapedDeepLink}">Open in YourBar</a></p>
-    ${iosLink || androidLink ? `<p>${iosLink}${androidLink}</p>` : ""}
-    <p>Canonical API URL</p>
-    <code>${apiUrl}</code>
+    ${image}
+    <div class="content">
+      <p class="eyebrow">YourBar cocktail recipe</p>
+      <h1>${escapedRecipeName}</h1>
+      <p>${escapedDescription}</p>
+      ${detailsSection}
+      ${ingredientsSection}
+      ${methodSection}
+      ${instructionsSection}
+      <section>
+        <h2>Open in the app</h2>
+        <p>If YourBar is installed, this page will try to open the app automatically. You can also use the button below.</p>
+        <p><a class="button" href="${escapedDeepLink}">Open in YourBar</a></p>
+        ${iosLink || androidLink ? `<p>${iosLink}${androidLink}</p>` : ""}
+      </section>
+      <section>
+        <h2>Canonical API URL</h2>
+        <code>${apiUrl}</code>
+      </section>
+    </div>
   </main>
 </body>
 </html>`;
