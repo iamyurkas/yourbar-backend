@@ -1,6 +1,6 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
-import { getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
+import { getRecipeIdByChecksum, getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
 import { validateRecipeSharePayloadV1 } from "./schema.js";
 
 type RecipeImageObject = {
@@ -92,6 +92,33 @@ function imageObjectKey(contentType: string): string {
   return `${crypto.randomUUID()}.${extension}`;
 }
 
+function canonicalizeForChecksum(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeForChecksum(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entryValue]) => [key, canonicalizeForChecksum(entryValue)]),
+    );
+  }
+
+  return typeof value === "string" ? value.trim() : value;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function recipeChecksum(recipe: unknown): Promise<string> {
+  const canonicalRecipe = JSON.stringify(canonicalizeForChecksum(recipe));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalRecipe));
+  return bytesToHex(digest);
+}
+
 async function handlePostImage(request: Request, env: Env): Promise<Response> {
   if (!env.RECIPE_IMAGES) {
     return jsonError("storage_not_configured", "Image storage is not configured", 503);
@@ -180,6 +207,21 @@ async function handlePostRecipe(request: Request, env: Env): Promise<Response> {
     return jsonError("validation_failed", "Recipe share payload is invalid", 400, validation.issues);
   }
 
+  const checksum = await recipeChecksum(validation.value.recipe);
+  const existingId = await getRecipeIdByChecksum(env.RECIPE_SHARES, checksum);
+  if (existingId) {
+    const existingRecord = await getRecipeShare(env.RECIPE_SHARES, existingId);
+    if (existingRecord) {
+      return jsonResponse({
+        id: existingRecord.id,
+        ...recipeUrls(env, existingRecord.id),
+        expiresAt: existingRecord.expiresAt,
+        recipeChecksum: existingRecord.recipeChecksum,
+        duplicate: true,
+      }, 200);
+    }
+  }
+
   const ttlSeconds = envNumber(env.DEFAULT_RECIPE_TTL_SECONDS, 2_592_000);
   const now = Date.now();
   const id = generateRecipeId();
@@ -189,10 +231,11 @@ async function handlePostRecipe(request: Request, env: Env): Promise<Response> {
     payload: validation.value,
     createdAt: new Date(now).toISOString(),
     expiresAt,
+    recipeChecksum: checksum,
   };
 
   await putRecipeShare(env.RECIPE_SHARES, record, ttlSeconds);
-  return jsonResponse({ id, ...recipeUrls(env, id), expiresAt }, 201);
+  return jsonResponse({ id, ...recipeUrls(env, id), expiresAt, recipeChecksum: checksum, duplicate: false }, 201);
 }
 
 async function handleGetRecipe(id: string, env: Env): Promise<Response> {

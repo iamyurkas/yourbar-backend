@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateRecipeId, isValidRecipeId } from '../dist/ids.js';
 import { corsPreflight, escapeHtml, jsonError, withCors } from '../dist/http.js';
-import { handleRequest, renderRecipeLandingPage } from '../dist/index.js';
+import { handleRequest, recipeChecksum, renderRecipeLandingPage } from '../dist/index.js';
 import { validateRecipeSharePayloadV1 } from '../dist/schema.js';
 
 const validPayload = {
@@ -86,6 +86,15 @@ test('payload validation rejects invalid imageUrl', () => {
   assert.ok(result.issues.some((issue) => issue.path === 'recipe.imageUrl'));
 });
 
+
+test('recipe checksum is stable for object key order and trimmed strings', async () => {
+  const left = await recipeChecksum({ name: ' Daiquiri ', ingredients: [{ name: 'Rum', amount: 2, unit: 'oz' }] });
+  const right = await recipeChecksum({ ingredients: [{ unit: 'oz', amount: 2, name: 'Rum' }], name: 'Daiquiri' });
+
+  assert.equal(left, right);
+  assert.match(left, /^[0-9a-f]{64}$/);
+});
+
 test('id generation format is short and URL-safe', () => {
   const id = generateRecipeId();
   assert.equal(id.length, 12);
@@ -98,6 +107,7 @@ test('landing page escapes recipe names', () => {
     payload: { ...validPayload, recipe: { ...validPayload.recipe, name: '<img src=x onerror="alert(1)">' } },
     createdAt: new Date(0).toISOString(),
     expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
   };
   const html = renderRecipeLandingPage(record, env());
   assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
@@ -166,6 +176,37 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
 });
 
+
+
+test('route integration reuses an existing recipe share for duplicate recipes', async () => {
+  const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
+  const first = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(validPayload),
+  }), bindings);
+  const second = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...validPayload,
+      recipe: {
+        ingredients: validPayload.recipe.ingredients,
+        name: ` ${validPayload.recipe.name} `,
+      },
+      source: { app: 'yourbar', appVersion: '2.0.0', platform: 'android' },
+    }),
+  }), bindings);
+
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 200);
+
+  const created = await first.json();
+  const duplicate = await second.json();
+  assert.equal(duplicate.id, created.id);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.recipeChecksum, created.recipeChecksum);
+});
 
 test('route integration uploads and serves a recipe image using mocked R2', async () => {
   const bindings = env({ RECIPE_IMAGES: new MockR2(), MAX_IMAGE_BYTES: '1024' });
