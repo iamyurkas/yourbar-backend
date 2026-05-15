@@ -42,6 +42,75 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 
+const TAG_COLORS = [
+  "#ec5a5a",
+  "#F06292",
+  "#BA68C8",
+  "#9575CD",
+  "#7986CB",
+  "#64B5F6",
+  "#4FC3F7",
+  "#4DD0E1",
+  "#4DB6AC",
+  "#81C784",
+  "#AED581",
+  "#CBD664",
+  "#FFD54F",
+  "#FFB74D",
+  "#FF8A65",
+  "#a8a8a8",
+  "#707070",
+] as const;
+
+const COCKTAIL_TAG_COLORS: Record<string, string> = {
+  "IBA Official": TAG_COLORS[9],
+  "Equal Parts": TAG_COLORS[5],
+  Bitter: TAG_COLORS[3],
+  Tiki: TAG_COLORS[7],
+  Strong: TAG_COLORS[0],
+  Medium: TAG_COLORS[1],
+  Soft: TAG_COLORS[12],
+  Long: TAG_COLORS[13],
+  Shot: TAG_COLORS[14],
+  "Non-alcoholic": TAG_COLORS[11],
+  Custom: TAG_COLORS[15],
+};
+
+const INGREDIENT_TAG_COLORS: Record<string, string> = {
+  "Base spirit": TAG_COLORS[16],
+  Liqueur: TAG_COLORS[0],
+  "Wine/Vermouth": TAG_COLORS[1],
+  "Beer/Cider": TAG_COLORS[3],
+  Bitters: TAG_COLORS[14],
+  Syrup: TAG_COLORS[13],
+  Mixer: TAG_COLORS[9],
+  "Fruit/Veg & Juice": TAG_COLORS[10],
+  "Fridge/Pantry": TAG_COLORS[6],
+  Other: TAG_COLORS[15],
+};
+
+const DEFAULT_TAG_COLOR = "#9CCAFF";
+const DARK_TAG_TEXT_COLOR = "#0B1017";
+
+function normalizeTagName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function createTagColorLookup(source: Record<string, string>): Map<string, string> {
+  return new Map(Object.entries(source).map(([name, color]) => [normalizeTagName(name), color]));
+}
+
+const COCKTAIL_TAG_COLOR_BY_NAME = createTagColorLookup(COCKTAIL_TAG_COLORS);
+const INGREDIENT_TAG_COLOR_BY_NAME = createTagColorLookup(INGREDIENT_TAG_COLORS);
+
+function getCocktailTagColor(name: string): string {
+  return COCKTAIL_TAG_COLOR_BY_NAME.get(normalizeTagName(name)) ?? DEFAULT_TAG_COLOR;
+}
+
+function getIngredientTagColor(name: string): string {
+  return INGREDIENT_TAG_COLOR_BY_NAME.get(normalizeTagName(name)) ?? DEFAULT_TAG_COLOR;
+}
+
 function envNumber(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
@@ -170,16 +239,12 @@ function displayTag(tag: RecipeTag): string {
   return typeof tag === "string" ? tag : tag.name;
 }
 
-function tagClassName(tag: string): string {
-  const normalized = tag.trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
-  if (normalized === "equal-parts") return "tag tag-equal-parts";
-  if (normalized === "medium") return "tag tag-medium";
-  if (normalized === "shot") return "tag tag-shot";
-  return "tag tag-default";
+function renderCocktailTag(tag: string): string {
+  return `<span class="tag-chip" style="--tag-color: ${getCocktailTagColor(tag)}">${escapeHtml(tag)}</span>`;
 }
 
-function renderTag(tag: string): string {
-  return `<span class="${tagClassName(tag)}">${escapeHtml(tag)}</span>`;
+function renderIngredientTag(tag: string): string {
+  return `<span class="ingredient-tag" style="--tag-color: ${getIngredientTagColor(tag)}">${escapeHtml(tag)}</span>`;
 }
 
 function renderIngredientAmount(ingredient: Ingredient): string {
@@ -197,15 +262,15 @@ function renderIngredients(ingredients: Ingredient[]): string {
       const imageUrl = ingredient.imageUrl?.trim();
       const ingredientName = ingredient.name.trim();
       const image = imageUrl
-        ? `<img class="ingredient-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredientName)}" loading="lazy">`
-        : `<div class="ingredient-image ingredient-image-placeholder" aria-hidden="true">${escapeHtml(ingredientName.slice(0, 1).toLocaleUpperCase())}</div>`;
+        ? `<div class="ingredient-thumb"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredientName)}" loading="lazy"></div>`
+        : `<div class="ingredient-thumb ingredient-thumb-placeholder" aria-hidden="true">${escapeHtml(ingredientName.slice(0, 1).toLocaleUpperCase())}</div>`;
       const description = ingredient.description?.trim() ? `<p class="ingredient-description">${renderInlineMarkup(ingredient.description.trim())}</p>` : "";
       const tags = ingredient.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
       const tagList = tags.length > 0
-        ? `<div class="ingredient-tags">${tags.map((tag) => renderTag(tag)).join(" ")}</div>`
+        ? `<div class="ingredient-tags">${tags.map((tag) => renderIngredientTag(tag)).join(" ")}</div>`
         : "";
 
-      return `<li>${image}<div class="ingredient-content"><div class="ingredient-line"><span class="ingredient-name">${escapeHtml(ingredientName)}</span>${amount ? `<span class="amount">${escapeHtml(amount)}</span>` : ""}</div>${note ? `<span class="note">${escapeHtml(note)}</span>` : ""}${description}${tagList}</div></li>`;
+      return `<li class="ingredient-row">${image}<div class="ingredient-content"><div class="ingredient-line"><span class="ingredient-name">${escapeHtml(ingredientName)}</span>${amount ? `<span class="ingredient-amount">${escapeHtml(amount)}</span>` : ""}</div>${note ? `<span class="note">${escapeHtml(note)}</span>` : ""}${description}${tagList}</div></li>`;
     })
     .join("");
   return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
@@ -218,7 +283,7 @@ function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   if (recipe.garnish?.trim()) details.push(`<dt>Garnish</dt><dd>${escapeHtml(recipe.garnish.trim())}</dd>`);
   if (recipe.servings !== undefined) details.push(`<dt>Servings</dt><dd>${recipe.servings}</dd>`);
   const tags = recipe.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
-  if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => renderTag(tag)).join(" ")}</dd>`);
+  if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => renderCocktailTag(tag)).join(" ")}</dd>`);
   return details.length > 0 ? `<section><h2>Details</h2><dl>${details.join("")}</dl></section>` : "";
 }
 
@@ -370,8 +435,8 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
   const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
   const recipeMedia = escapedImageUrl
-    ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">`
-    : `<div class="recipe-image recipe-image-placeholder" aria-label="No photo for ${escapedRecipeName}">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase() || "No photo")}</div>`;
+    ? `<div class="cocktail-image-frame"><img class="cocktail-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager"></div>`
+    : `<div class="cocktail-image-placeholder" aria-label="No photo for ${escapedRecipeName}">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase() || "No photo")}</div>`;
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
   const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
@@ -414,10 +479,6 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       --danger: #F28B82;
       --success: #81C784;
       --shadow: #000000;
-      --tag-equal-parts: #90CAF9;
-      --tag-medium: #F06292;
-      --tag-shot: #FF8A65;
-      --tag-default: #9CCAFF;
     }
     * { box-sizing: border-box; }
     html { background: var(--background); }
@@ -490,21 +551,34 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       justify-content: center;
       width: 100%;
     }
-    .recipe-image {
-      display: block;
+    .cocktail-image-frame {
       width: 150px;
       height: 150px;
+      border-radius: 16px;
+      background: #ffffff;
+      border: 1px solid var(--outline-variant);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .cocktail-image {
+      width: 100%;
+      height: 100%;
       object-fit: contain;
-      border-radius: 12px;
+      display: block;
+    }
+    .cocktail-image-placeholder {
+      display: grid;
+      place-items: center;
+      width: 150px;
+      height: 150px;
+      border-radius: 16px;
       background: var(--surface-bright);
       border: 1px solid var(--outline-variant);
       color: var(--on-surface-variant);
       font-size: 48px;
       font-weight: 700;
-    }
-    .recipe-image-placeholder {
-      display: grid;
-      place-items: center;
     }
     .recipe-description {
       width: 100%;
@@ -573,28 +647,36 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       border-top: 1px solid var(--outline-variant);
       border-bottom: 1px solid var(--outline-variant);
     }
-    .ingredients li {
+    .ingredient-row {
       display: flex;
       align-items: center;
       gap: 12px;
       min-height: 72px;
       margin: 0;
-      padding: 12px 0;
+      padding: 14px 0;
       border-bottom: 1px solid var(--outline-variant);
     }
-    .ingredients li:last-child { border-bottom: 0; }
-    .ingredient-image {
-      flex: 0 0 52px;
-      width: 52px;
-      height: 52px;
-      object-fit: cover;
+    .ingredient-row:last-child { border-bottom: 0; }
+    .ingredient-thumb {
+      width: 56px;
+      height: 56px;
       border-radius: 10px;
-      background: var(--surface-bright);
+      background: #ffffff;
       border: 1px solid var(--outline-variant);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex: 0 0 auto;
     }
-    .ingredient-image-placeholder {
-      display: grid;
-      place-items: center;
+    .ingredient-thumb img {
+      width: calc(100% - 8px);
+      height: calc(100% - 8px);
+      object-fit: contain;
+      display: block;
+    }
+    .ingredient-thumb-placeholder {
+      background: var(--surface-bright);
       color: var(--on-surface-variant);
       font-size: 18px;
       font-weight: 700;
@@ -615,12 +697,14 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       font-weight: 600;
     }
     .ingredient-name { min-width: 0; }
-    .amount {
-      flex: 0 0 auto;
+    .ingredient-amount {
+      margin-left: auto;
       color: var(--on-surface-muted);
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
+      line-height: 20px;
       text-align: right;
+      white-space: nowrap;
     }
     .note {
       display: block;
@@ -636,22 +720,30 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       line-height: 20px;
     }
     .ingredient-tags { margin-top: 8px; }
-    .tag {
+    .tag-chip,
+    .ingredient-tag {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--tag-color);
+      color: ${DARK_TAG_TEXT_COLOR};
+      border: 0;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .tag-chip {
       margin: 0 6px 6px 0;
       padding: 8px 14px;
-      border: 0;
-      border-radius: 999px;
-      color: var(--on-primary);
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 14px;
+      line-height: 18px;
+    }
+    .ingredient-tag {
+      margin: 0 6px 6px 0;
+      padding: 6px 10px;
+      font-size: 12px;
       line-height: 16px;
     }
-    .tag-default { background: var(--tag-default); }
-    .tag-equal-parts { background: var(--tag-equal-parts); }
-    .tag-medium { background: var(--tag-medium); }
-    .tag-shot { background: var(--tag-shot); }
     .action-panel {
       display: flex;
       flex-direction: column;
