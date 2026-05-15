@@ -205,7 +205,7 @@ test('landing page includes the full recipe and image when available', () => {
             unit: 'oz',
             description: 'A **clean** base spirit.',
             imageUrl: 'https://api.yourbar.app/images/white-rum.webp',
-            tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+            tags: [{ id: 'ingredient-tag-base-spirit', name: 'Base spirit' }, { id: 'ingredient-tag-liqueur', name: 'Liqueur' }],
           },
           { name: 'Lime juice', amount: 1, unit: 'oz', note: 'fresh' },
           { name: 'Simple syrup', amount: 0.75, unit: 'oz' },
@@ -215,7 +215,7 @@ test('landing page includes the full recipe and image when available', () => {
         glassware: 'Coupe',
         garnish: 'Lime wheel',
         servings: 1,
-        tags: ['classic', 'sour'],
+        tags: ['classic', 'Equal Parts', 'Medium', 'Shot'],
       },
     },
     createdAt: new Date(0).toISOString(),
@@ -227,23 +227,109 @@ test('landing page includes the full recipe and image when available', () => {
 
   assert.match(html, /<main class="app-detail-screen">/);
   assert.match(html, /<div class="top-bar">/);
-  assert.match(html, /<article class="hero-card">/);
+  assert.match(html, /<header class="recipe-header">/);
+  assert.doesNotMatch(html, /<article class="hero-card">/);
   assert.match(html, /<section class="action-panel">/);
-  assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
+  assert.match(html, /--background: #0B1017;/);
+  assert.match(html, /--surface: #0F1720;/);
+  assert.match(html, /--surface-bright: #1B2733;/);
+  assert.match(html, /--primary: #9CCAFF;/);
+  assert.match(html, /--on-primary: #001529;/);
+  assert.match(html, /\.cocktail-image-frame \{[\s\S]*?background: #ffffff;[\s\S]*?overflow: hidden;/);
+  assert.match(html, /\.cocktail-image \{[\s\S]*?object-fit: contain;/);
+  assert.match(html, /\.ingredient-thumb \{[\s\S]*?background: #ffffff;[\s\S]*?flex: 0 0 auto;/);
+  assert.match(html, /\.ingredient-thumb img \{[\s\S]*?object-fit: contain;/);
+  assert.doesNotMatch(html, /#ff8a3d/i);
+  assert.doesNotMatch(html, /#fff7ed/i);
+  assert.doesNotMatch(html, /#c7b8aa/i);
+  assert.match(html, /<link rel="canonical" href="https:\/\/api\.yourbar\.app\/r\/23456789AB">/);
+  assert.match(html, /<link rel="alternate" type="application\/json" href="https:\/\/api\.yourbar\.app\/api\/recipes\/23456789AB">/);
+  assert.match(html, /<div class="cocktail-image-frame"><img class="cocktail-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
   assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp">/);
   assert.match(html, /White rum/);
-  assert.match(html, /<span class="amount">2 oz<\/span>/);
-  assert.match(html, /<img class="ingredient-image" src="https:\/\/api\.yourbar\.app\/images\/white-rum\.webp"/);
+  assert.match(html, /<span class="ingredient-amount">2 oz<\/span>/);
+  assert.match(html, /<div class="ingredient-thumb"><img src="https:\/\/api\.yourbar\.app\/images\/white-rum\.webp"/);
   assert.match(html, /A <strong>clean<\/strong> base spirit\./);
-  assert.match(html, /Spirit/);
+  assert.match(html, /<span class="ingredient-tag" style="--tag-color: #707070">Base spirit<\/span>/);
+  assert.match(html, /<span class="ingredient-tag" style="--tag-color: #ec5a5a">Liqueur<\/span>/);
   assert.match(html, /Lime juice/);
-  assert.match(html, /\(fresh\)/);
+  assert.match(html, /<span class="note">fresh<\/span>/);
   assert.match(html, /Shake with ice\./);
   assert.match(html, /Fine strain into the glass\./);
   assert.match(html, /Garnish and serve immediately\./);
   assert.match(html, /Coupe/);
   assert.match(html, /Lime wheel/);
-  assert.match(html, /classic/);
+  assert.match(html, /<span class="tag-chip" style="--tag-color: #9CCAFF">classic<\/span>/);
+  assert.match(html, /<span class="tag-chip" style="--tag-color: #64B5F6">Equal Parts<\/span>/);
+  assert.match(html, /<span class="tag-chip" style="--tag-color: #F06292">Medium<\/span>/);
+  assert.match(html, /<span class="tag-chip" style="--tag-color: #FF8A65">Shot<\/span>/);
+  assert.match(html, /<div class="store-badges">/);
+  assert.match(html, /Download on the/);
+  assert.match(html, /App Store/);
+  assert.match(html, /Get it on/);
+  assert.match(html, /Google Play/);
+  assert.doesNotMatch(html, /<h2>Canonical API URL<\/h2>/);
+});
+
+
+test('landing page applies required cocktail and ingredient tag colors', () => {
+  const cocktailTags = [
+    ['IBA Official', '#81C784'],
+    [' Equal Parts ', '#64B5F6'],
+    ['Bitter', '#9575CD'],
+    ['Tiki', '#4DD0E1'],
+    ['Strong', '#ec5a5a'],
+    ['Medium', '#F06292'],
+    ['Soft', '#FFD54F'],
+    ['Long', '#FFB74D'],
+    ['Shot', '#FF8A65'],
+    ['Non-alcoholic', '#CBD664'],
+    ['Custom', '#a8a8a8'],
+    ['Unknown cocktail tag', '#9CCAFF'],
+  ];
+  const ingredientTags = [
+    ['Base spirit', '#707070'],
+    [' liqueur ', '#ec5a5a'],
+    ['Wine/Vermouth', '#F06292'],
+    ['Beer/Cider', '#9575CD'],
+    ['Bitters', '#FF8A65'],
+    ['Syrup', '#FFB74D'],
+    ['Mixer', '#81C784'],
+    ['Fruit/Veg & Juice', '#AED581'],
+    ['Fridge/Pantry', '#4FC3F7'],
+    ['Other', '#a8a8a8'],
+    ['Unknown ingredient tag', '#9CCAFF'],
+  ];
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        tags: cocktailTags.map(([name]) => name),
+        ingredients: [
+          {
+            name: 'Tagged ingredient',
+            amount: 1,
+            unit: 'oz',
+            tags: ingredientTags.map(([name]) => ({ id: `ingredient-${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name })),
+          },
+        ],
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
+
+  const html = renderRecipeLandingPage(record, env());
+
+  for (const [name, color] of cocktailTags) {
+    assert.match(html, new RegExp(`<span class="tag-chip" style="--tag-color: ${color}">${escapeHtml(name.trim())}<\\/span>`));
+  }
+  for (const [name, color] of ingredientTags) {
+    assert.match(html, new RegExp(`<span class="ingredient-tag" style="--tag-color: ${color}">${escapeHtml(name.trim())}<\\/span>`));
+  }
 });
 
 test('landing page prefers display names for units and glassware', () => {
@@ -268,7 +354,7 @@ test('landing page prefers display names for units and glassware', () => {
 
   const html = renderRecipeLandingPage(record, env());
 
-  assert.match(html, /<span class="amount">45 ml<\/span>/);
+  assert.match(html, /<span class="ingredient-amount">45 ml<\/span>/);
   assert.match(html, /Nick &amp; Nora/);
   assert.doesNotMatch(html, /glass-123/);
   assert.doesNotMatch(html, /unit-ml/);
@@ -322,7 +408,7 @@ test('landing page renders inline markup and a single capitalized method without
 
   const html = renderRecipeLandingPage(record, env());
 
-  assert.match(html, /<p>A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
+  assert.match(html, /<p class="recipe-description">A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
   assert.match(html, /<section>\s*<h2>Method<\/h2>\s*<p>Shake<\/p>\s*<\/section>/);
   assert.match(html, /<li>Add <strong>rum<\/strong>\.<\/li>/);
   assert.match(html, /<li>Serve <em>cold<\/em>\.<\/li>/);
