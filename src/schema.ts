@@ -7,7 +7,13 @@ export type RecipeTag = string | LocalizedReference;
 export type RecipeMethod = string | string[] | LocalizedReference;
 
 export type Ingredient = {
+  id?: string;
+  baseIngredientId?: string;
+  styleIngredientId?: string;
   name: string;
+  description?: string;
+  imageUrl?: string;
+  tags?: RecipeTag[];
   amount?: number | string;
   unit?: string;
   unitId?: string;
@@ -107,6 +113,23 @@ function localizedReference(value: unknown, path: string, options: { idMax: numb
   }
 }
 
+function validateTags(value: unknown, path: string, options: { maxItems: number; stringMax: number; idMax: number; nameMax: number }, issues: ValidationIssue[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length > options.maxItems) {
+    issues.push({ path, message: `Must be an array of up to ${options.maxItems} strings or localized tag objects` });
+    return;
+  }
+
+  value.forEach((tag, index) => {
+    const tagPath = `${path}[${index}]`;
+    if (isString(tag)) {
+      if (tag.length > options.stringMax) issues.push({ path: tagPath, message: `Must be at most ${options.stringMax} characters` });
+      return;
+    }
+    localizedReference(tag, tagPath, { idMax: options.idMax, nameMax: options.nameMax }, issues);
+  });
+}
+
 function validateHttpUrl(value: unknown, path: string, issues: ValidationIssue[]): void {
   if (value === undefined) return;
   if (!isString(value)) {
@@ -165,9 +188,15 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
           issues.push({ path, message: "Ingredient must be an object" });
           return;
         }
+        optionalString(ingredient.id, `${path}.id`, 120, issues);
+        optionalString(ingredient.baseIngredientId, `${path}.baseIngredientId`, 120, issues);
+        optionalString(ingredient.styleIngredientId, `${path}.styleIngredientId`, 120, issues);
         if (!isString(ingredient.name) || ingredient.name.trim().length < 1 || ingredient.name.trim().length > 120) {
           issues.push({ path: `${path}.name`, message: "Must be a string with trimmed length from 1 to 120" });
         }
+        optionalString(ingredient.description, `${path}.description`, 2000, issues);
+        validateHttpUrl(ingredient.imageUrl, `${path}.imageUrl`, issues);
+        validateTags(ingredient.tags, `${path}.tags`, { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
         if (ingredient.amount !== undefined && typeof ingredient.amount !== "number" && !isString(ingredient.amount)) {
           issues.push({ path: `${path}.amount`, message: "Must be a number or string" });
         }
@@ -178,20 +207,7 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
       });
     }
 
-    if (recipe.tags !== undefined) {
-      if (!Array.isArray(recipe.tags) || recipe.tags.length > 30) {
-        issues.push({ path: "recipe.tags", message: "Must be an array of up to 30 strings or localized tag objects" });
-      } else {
-        recipe.tags.forEach((tag, index) => {
-          const path = `recipe.tags[${index}]`;
-          if (isString(tag)) {
-            if (tag.length > 40) issues.push({ path, message: "Must be at most 40 characters" });
-            return;
-          }
-          localizedReference(tag, path, { idMax: 120, nameMax: 40 }, issues);
-        });
-      }
-    }
+    validateTags(recipe.tags, "recipe.tags", { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
 
     if (recipe.servings !== undefined) {
       if (typeof recipe.servings !== "number" || !Number.isInteger(recipe.servings) || recipe.servings < 1 || recipe.servings > 100) {
