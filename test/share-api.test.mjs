@@ -227,8 +227,11 @@ test('landing page includes the full recipe and image when available', () => {
 
   assert.match(html, /<main class="app-detail-screen">/);
   assert.match(html, /<div class="top-bar">/);
-  assert.match(html, /<article class="hero-card">/);
+  assert.match(html, /<header class="recipe-header">/);
+  assert.doesNotMatch(html, /<article class="hero-card">/);
   assert.match(html, /<section class="action-panel">/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/api\.yourbar\.app\/r\/23456789AB">/);
+  assert.match(html, /<link rel="alternate" type="application\/json" href="https:\/\/api\.yourbar\.app\/api\/recipes\/23456789AB">/);
   assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
   assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp">/);
   assert.match(html, /White rum/);
@@ -237,13 +240,19 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /A <strong>clean<\/strong> base spirit\./);
   assert.match(html, /Spirit/);
   assert.match(html, /Lime juice/);
-  assert.match(html, /\(fresh\)/);
+  assert.match(html, /<span class="note">fresh<\/span>/);
   assert.match(html, /Shake with ice\./);
   assert.match(html, /Fine strain into the glass\./);
   assert.match(html, /Garnish and serve immediately\./);
   assert.match(html, /Coupe/);
   assert.match(html, /Lime wheel/);
   assert.match(html, /classic/);
+  assert.match(html, /<div class="store-badges">/);
+  assert.match(html, /Download on the/);
+  assert.match(html, /App Store/);
+  assert.match(html, /Get it on/);
+  assert.match(html, /Google Play/);
+  assert.doesNotMatch(html, /<h2>Canonical API URL<\/h2>/);
 });
 
 test('landing page prefers display names for units and glassware', () => {
@@ -322,7 +331,7 @@ test('landing page renders inline markup and a single capitalized method without
 
   const html = renderRecipeLandingPage(record, env());
 
-  assert.match(html, /<p>A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
+  assert.match(html, /<p class="recipe-description">A <strong>crisp<\/strong> Cuban <em>classic<\/em>\.<\/p>/);
   assert.match(html, /<section>\s*<h2>Method<\/h2>\s*<p>Shake<\/p>\s*<\/section>/);
   assert.match(html, /<li>Add <strong>rum<\/strong>\.<\/li>/);
   assert.match(html, /<li>Serve <em>cold<\/em>\.<\/li>/);

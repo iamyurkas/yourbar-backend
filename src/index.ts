@@ -183,16 +183,17 @@ function renderIngredients(ingredients: Ingredient[]): string {
       const amount = renderIngredientAmount(ingredient);
       const note = ingredient.note?.trim();
       const imageUrl = ingredient.imageUrl?.trim();
+      const ingredientName = ingredient.name.trim();
       const image = imageUrl
-        ? `<img class="ingredient-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredient.name.trim())}" loading="lazy">`
-        : "";
+        ? `<img class="ingredient-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredientName)}" loading="lazy">`
+        : `<div class="ingredient-image ingredient-image-placeholder" aria-hidden="true">${escapeHtml(ingredientName.slice(0, 1).toLocaleUpperCase())}</div>`;
       const description = ingredient.description?.trim() ? `<p class="ingredient-description">${renderInlineMarkup(ingredient.description.trim())}</p>` : "";
       const tags = ingredient.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
       const tagList = tags.length > 0
         ? `<div class="ingredient-tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</div>`
         : "";
 
-      return `<li>${image}<div class="ingredient-content"><div>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</div>${description}${tagList}</div></li>`;
+      return `<li>${image}<div class="ingredient-content"><div class="ingredient-line"><span class="ingredient-name">${escapeHtml(ingredientName)}</span>${amount ? `<span class="amount">${escapeHtml(amount)}</span>` : ""}</div>${note ? `<span class="note">${escapeHtml(note)}</span>` : ""}${description}${tagList}</div></li>`;
     })
     .join("");
   return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
@@ -349,14 +350,16 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const publicUrl = escapeHtml(urls.publicUrl);
   const deepLink = `${deepLinkScheme(env)}://import/recipe/${encodeURIComponent(id)}`;
   const escapedDeepLink = escapeHtml(deepLink);
-  const iosLink = env.IOS_APP_STORE_URL ? `<a class="secondary" href="${escapeHtml(env.IOS_APP_STORE_URL)}">Install for iOS</a>` : "";
-  const androidLink = env.ANDROID_PLAY_STORE_URL ? `<a class="secondary" href="${escapeHtml(env.ANDROID_PLAY_STORE_URL)}">Install for Android</a>` : "";
+  const iosStoreUrl = env.IOS_APP_STORE_URL?.trim() || "https://apps.apple.com/app/your-bar-cocktail-recipes/id6758964503";
+  const androidStoreUrl = env.ANDROID_PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.yourbarapp.free";
+  const iosLink = `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><span class="store-badge-kicker">Download on the</span><span class="store-badge-label">App Store</span></a>`;
+  const androidLink = `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><span class="store-badge-kicker">Get it on</span><span class="store-badge-label">Google Play</span></a>`;
   const imageUrl = recipe.imageUrl?.trim();
   const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
   const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
-  const heroMedia = escapedImageUrl
+  const recipeMedia = escapedImageUrl
     ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">`
-    : `<div class="recipe-image recipe-image-placeholder" aria-hidden="true">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase())}</div>`;
+    : `<div class="recipe-image recipe-image-placeholder" aria-label="No photo for ${escapedRecipeName}">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase() || "No photo")}</div>`;
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
   const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
@@ -374,45 +377,322 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   <meta property="og:description" content="${escapedDescription}">
   <meta property="og:type" content="website">${imageMeta}
   <meta property="og:url" content="${publicUrl}">
+  <link rel="canonical" href="${publicUrl}">
+  <link rel="alternate" type="application/json" href="${apiUrl}">
   <style>
-    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --page: #0f1117; --surface: #171a22; --surface-2: #20242e; --text: #fff7ed; --muted: #b9a99b; --accent: #ff8a3d; --accent-soft: rgb(255 138 61 / 14%); }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --background: #101218;
+      --surface: #171a22;
+      --surface-bright: #20242e;
+      --surface-variant: #252a35;
+      --on-surface: #fff7ed;
+      --on-surface-variant: #c7b8aa;
+      --outline: rgba(255, 255, 255, 0.12);
+      --outline-variant: rgba(255, 255, 255, 0.08);
+      --primary: #ff8a3d;
+      --tint: #ff8a3d;
+      --on-primary: #1f1208;
+      --accent-soft: rgb(255 138 61 / 14%);
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #262131 0, var(--page) 42rem); color: var(--text); }
-    .app-detail-screen { width: min(100vw, 30rem); min-height: 100vh; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) 1rem max(1.25rem, env(safe-area-inset-bottom)); background: linear-gradient(180deg, #151821 0, #101218 100%); box-shadow: 0 0 0 1px rgb(255 255 255 / 6%), 0 28px 90px rgb(0 0 0 / 45%); }
-    .top-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: -1rem -1rem 0.75rem; padding: max(1rem, env(safe-area-inset-top)) 1rem 0.85rem; background: linear-gradient(180deg, rgb(15 17 23 / 96%), rgb(15 17 23 / 78%)); backdrop-filter: blur(18px); }
-    .top-bar-title { margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-    .hero-card { overflow: hidden; border: 1px solid rgb(255 255 255 / 10%); border-radius: 2rem; background: var(--surface); box-shadow: 0 18px 50px rgb(0 0 0 / 32%); }
-    .recipe-image { display: block; width: 100%; aspect-ratio: 1 / 1; max-height: 28rem; object-fit: cover; background: linear-gradient(135deg, #2a2028, #3b2417); color: rgb(255 255 255 / 72%); font-size: 5rem; font-weight: 900; }
-    .recipe-image-placeholder { display: grid; place-items: center; }
-    .hero-content { padding: 1.25rem; }
-    .eyebrow { margin: 0 0 0.45rem; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; font-weight: 900; color: var(--accent); }
-    h1 { margin: 0 0 0.85rem; font-size: clamp(2.15rem, 12vw, 3.75rem); line-height: 0.92; letter-spacing: -0.06em; }
-    h2 { margin: 0 0 0.85rem; font-size: 0.86rem; color: #ffe0c2; letter-spacing: 0.09em; text-transform: uppercase; }
-    p, li, dd { color: #f3d9c2; line-height: 1.6; }
-    .hero-content > p { margin: 0; color: #e8d7c8; }
-    .content { padding: 1rem 0 0; }
-    section { margin-top: 0.9rem; padding: 1rem; border: 1px solid rgb(255 255 255 / 8%); border-radius: 1.35rem; background: var(--surface); }
-    ol, ul { padding-left: 1.25rem; }
-    li + li { margin-top: 0.35rem; }
-    .ingredients { padding-left: 0; list-style: none; }
-    .ingredients li { display: flex; gap: 0.85rem; margin: 0.75rem 0; padding: 0.65rem; border-radius: 1rem; background: var(--surface-2); }
-    .ingredient-image { flex: 0 0 4rem; width: 4rem; height: 4rem; object-fit: cover; border-radius: 0.9rem; background: rgb(0 0 0 / 28%); }
-    .ingredient-content { min-width: 0; }
-    .ingredient-description { margin: 0.35rem 0 0; color: #f8d4b4; }
-    .ingredient-tags { margin-top: 0.45rem; }
-    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.65rem 1rem; margin: 0; }
-    dt { color: var(--muted); font-size: 0.73rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-    dd { margin: 0; color: var(--text); font-weight: 700; }
-    .amount { color: var(--text); font-weight: 800; }
-    .note { color: var(--muted); }
-    .tag { display: inline-block; margin: 0 0.3rem 0.3rem 0; padding: 0.24rem 0.62rem; border-radius: 999px; background: var(--accent-soft); color: #ffd4ad; font-size: 0.82rem; font-weight: 800; }
-    .action-panel { background: linear-gradient(135deg, rgb(255 138 61 / 16%), rgb(255 255 255 / 6%)); }
-    a.button, a.secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; text-decoration: none; font-weight: 800; }
-    a.button { background: var(--accent); color: #1f1208; box-shadow: 0 10px 28px rgb(255 138 61 / 24%); }
-    a.secondary { margin-top: 0.75rem; margin-right: 0.5rem; border: 1px solid rgb(255 255 255 / 16%); color: #fff7ed; }
-    .top-bar .button { min-height: 2.25rem; padding: 0 0.8rem; font-size: 0.82rem; }
-    code { display: block; overflow-wrap: anywhere; padding: 0.85rem; border-radius: 0.9rem; background: rgb(0 0 0 / 24%); color: #ffe0c2; }
-    @media (min-width: 48rem) { body { padding: 2rem 0; } .app-detail-screen { min-height: auto; border-radius: 2.25rem; } .top-bar { border-radius: 2.25rem 2.25rem 0 0; } }
+    html { background: var(--background); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--background);
+      color: var(--on-surface);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: inherit; }
+    .app-detail-screen {
+      width: min(100vw, 30rem);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: max(1rem, env(safe-area-inset-top)) 24px max(1.25rem, env(safe-area-inset-bottom));
+      background: var(--background);
+    }
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 4.5rem 1fr 4.5rem;
+      align-items: center;
+      gap: 0.75rem;
+      margin: calc(max(1rem, env(safe-area-inset-top)) * -1) -24px 16px;
+      padding: max(0.75rem, env(safe-area-inset-top)) 24px 12px;
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      border-bottom: 1px solid var(--outline-variant);
+      backdrop-filter: blur(18px);
+    }
+    .top-bar-title {
+      grid-column: 2;
+      margin: 0;
+      color: var(--on-surface);
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 22px;
+      text-align: center;
+    }
+    .top-bar .button {
+      grid-column: 3;
+      min-height: 36px;
+      width: 100%;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 14px;
+    }
+    .recipe-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    h1 {
+      margin: 0;
+      color: var(--on-surface);
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 26px;
+      letter-spacing: -0.01em;
+    }
+    .recipe-media {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+    .recipe-image {
+      display: block;
+      width: 150px;
+      height: 150px;
+      object-fit: contain;
+      border-radius: 12px;
+      background: var(--surface-bright);
+      border: 1px solid var(--outline-variant);
+      color: var(--on-surface-variant);
+      font-size: 48px;
+      font-weight: 700;
+    }
+    .recipe-image-placeholder {
+      display: grid;
+      place-items: center;
+    }
+    .recipe-description {
+      width: 100%;
+      margin: 0;
+      color: var(--on-surface-variant);
+      font-size: 14px;
+      line-height: 22px;
+      text-align: left;
+    }
+    .content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 0;
+    }
+    section {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+    }
+    section > h2 {
+      margin: 0 0 12px;
+      color: var(--on-surface);
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 22px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    p, li, dd {
+      color: var(--on-surface-variant);
+      font-size: 14px;
+      line-height: 22px;
+    }
+    section > p { margin: 0; }
+    ol {
+      margin: 0;
+      padding-left: 1.35rem;
+    }
+    ol li { padding-left: 0.2rem; }
+    li + li { margin-top: 8px; }
+    dl {
+      display: grid;
+      grid-template-columns: minmax(5.25rem, max-content) 1fr;
+      gap: 10px 14px;
+      margin: 0;
+      padding: 12px 0;
+      border-top: 1px solid var(--outline-variant);
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    dt {
+      color: var(--on-surface-variant);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 20px;
+    }
+    dd {
+      margin: 0;
+      color: var(--on-surface);
+      font-weight: 600;
+    }
+    .ingredients {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border-top: 1px solid var(--outline-variant);
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .ingredients li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 72px;
+      margin: 0;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .ingredients li:last-child { border-bottom: 0; }
+    .ingredient-image {
+      flex: 0 0 52px;
+      width: 52px;
+      height: 52px;
+      object-fit: cover;
+      border-radius: 10px;
+      background: var(--surface-bright);
+      border: 1px solid var(--outline-variant);
+    }
+    .ingredient-image-placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--on-surface-variant);
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .ingredient-content {
+      flex: 1;
+      min-width: 0;
+      color: var(--on-surface);
+      font-size: 14px;
+      line-height: 20px;
+    }
+    .ingredient-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--on-surface);
+      font-weight: 600;
+    }
+    .ingredient-name { min-width: 0; }
+    .amount {
+      flex: 0 0 auto;
+      color: var(--on-surface-variant);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+    }
+    .note {
+      display: block;
+      margin-top: 2px;
+      color: var(--on-surface-variant);
+      font-size: 13px;
+      line-height: 18px;
+    }
+    .ingredient-description {
+      margin: 4px 0 0;
+      color: var(--on-surface-variant);
+      font-size: 13px;
+      line-height: 20px;
+    }
+    .ingredient-tags { margin-top: 8px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 6px 6px 0;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #ffd7ba;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 16px;
+    }
+    .action-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    .action-panel h2, .action-panel p { margin: 0; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 56px;
+      width: 100%;
+      padding: 0 18px;
+      border-radius: 10px;
+      background: var(--primary);
+      color: var(--on-primary);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 20px;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: 0 12px 28px rgb(255 138 61 / 20%);
+    }
+    .store-badges {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .store-badge {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 46px;
+      padding: 7px 14px;
+      border: 1px solid rgb(255 255 255 / 16%);
+      border-radius: 12px;
+      background: #050506;
+      color: #ffffff;
+      text-decoration: none;
+    }
+    .store-badge-kicker {
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 12px;
+      opacity: 0.86;
+    }
+    .store-badge-label {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 20px;
+      letter-spacing: -0.01em;
+    }
+    .visually-hidden-api { display: none; }
+    @media (min-width: 28rem) {
+      .store-badges { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 48rem) {
+      body { padding: 2rem 0; }
+      .app-detail-screen {
+        min-height: auto;
+        border: 1px solid var(--outline-variant);
+        border-radius: 28px;
+        box-shadow: 0 24px 70px rgb(0 0 0 / 36%);
+        overflow: clip;
+      }
+      .top-bar { border-radius: 28px 28px 0 0; }
+    }
   </style>
 </head>
 <body>
@@ -421,14 +701,11 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       <p class="top-bar-title">Recipe details</p>
       <a class="button" href="${escapedDeepLink}">Open</a>
     </div>
-    <article class="hero-card">
-      ${heroMedia}
-      <div class="hero-content">
-        <p class="eyebrow">YourBar cocktail recipe</p>
-        <h1>${escapedRecipeName}</h1>
-        <p>${renderInlineMarkup(description)}</p>
-      </div>
-    </article>
+    <header class="recipe-header">
+      <h1>${escapedRecipeName}</h1>
+      <div class="recipe-media">${recipeMedia}</div>
+      <p class="recipe-description">${renderInlineMarkup(description)}</p>
+    </header>
     <div class="content">
       ${detailsSection}
       ${ingredientsSection}
@@ -437,13 +714,13 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       <section class="action-panel">
         <h2>Open in the app</h2>
         <p>If YourBar is installed, this page will try to open the app automatically. You can also use the button below.</p>
-        <p><a class="button" href="${escapedDeepLink}">Open in YourBar</a></p>
-        ${iosLink || androidLink ? `<p>${iosLink}${androidLink}</p>` : ""}
+        <a class="button" href="${escapedDeepLink}">Open in YourBar</a>
+        <div class="store-badges">
+          ${iosLink}
+          ${androidLink}
+        </div>
       </section>
-      <section>
-        <h2>Canonical API URL</h2>
-        <code>${apiUrl}</code>
-      </section>
+      <span class="visually-hidden-api" hidden aria-hidden="true">${apiUrl}</span>
     </div>
   </main>
 </body>
