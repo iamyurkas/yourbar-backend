@@ -1,3 +1,11 @@
+export type LocalizedReference = {
+  id: string;
+  name: string;
+};
+
+export type RecipeTag = string | LocalizedReference;
+export type RecipeMethod = string | string[] | LocalizedReference;
+
 export type Ingredient = {
   name: string;
   amount?: number | string;
@@ -19,8 +27,10 @@ export type RecipeSharePayloadV1 = {
     glasswareId?: string;
     glasswareName?: string;
     garnish?: string;
-    method?: string | string[];
-    tags?: string[];
+    method?: RecipeMethod;
+    methodId?: string;
+    methodName?: string;
+    tags?: RecipeTag[];
     servings?: number;
     imageUrl?: string;
   };
@@ -73,6 +83,30 @@ function stringOrStringArrayLength(value: unknown, path: string, maxTotal: numbe
   issues.push({ path, message: "Must be a string or an array of strings" });
 }
 
+function methodValue(value: unknown, path: string, maxTotal: number, issues: ValidationIssue[]): void {
+  if (value === undefined) return;
+  if (isObject(value)) {
+    localizedReference(value, path, { idMax: 120, nameMax: 120 }, issues);
+    return;
+  }
+  stringOrStringArrayLength(value, path, maxTotal, issues);
+}
+
+function localizedReference(value: unknown, path: string, options: { idMax: number; nameMax: number }, issues: ValidationIssue[]): void {
+  if (!isObject(value)) {
+    issues.push({ path, message: "Must be an object" });
+    return;
+  }
+
+  if (!isString(value.id) || value.id.trim().length < 1 || value.id.length > options.idMax) {
+    issues.push({ path: `${path}.id`, message: `Must be a string with trimmed length from 1 to ${options.idMax}` });
+  }
+
+  if (!isString(value.name) || value.name.trim().length < 1 || value.name.length > options.nameMax) {
+    issues.push({ path: `${path}.name`, message: `Must be a string with trimmed length from 1 to ${options.nameMax}` });
+  }
+}
+
 function validateHttpUrl(value: unknown, path: string, issues: ValidationIssue[]): void {
   if (value === undefined) return;
   if (!isString(value)) {
@@ -113,7 +147,9 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
 
     optionalString(recipe.description, "recipe.description", 2000, issues);
     stringOrStringArrayLength(recipe.instructions, "recipe.instructions", 8000, issues);
-    stringOrStringArrayLength(recipe.method, "recipe.method", 8000, issues);
+    methodValue(recipe.method, "recipe.method", 8000, issues);
+    optionalString(recipe.methodId, "recipe.methodId", 120, issues);
+    optionalString(recipe.methodName, "recipe.methodName", 120, issues);
     optionalString(recipe.glassware, "recipe.glassware", 120, issues);
     optionalString(recipe.glasswareId, "recipe.glasswareId", 120, issues);
     optionalString(recipe.glasswareName, "recipe.glasswareName", 120, issues);
@@ -143,8 +179,17 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
     }
 
     if (recipe.tags !== undefined) {
-      if (!Array.isArray(recipe.tags) || recipe.tags.length > 30 || !recipe.tags.every((tag) => isString(tag) && tag.length <= 40)) {
-        issues.push({ path: "recipe.tags", message: "Must be an array of up to 30 strings, each at most 40 characters" });
+      if (!Array.isArray(recipe.tags) || recipe.tags.length > 30) {
+        issues.push({ path: "recipe.tags", message: "Must be an array of up to 30 strings or localized tag objects" });
+      } else {
+        recipe.tags.forEach((tag, index) => {
+          const path = `recipe.tags[${index}]`;
+          if (isString(tag)) {
+            if (tag.length > 40) issues.push({ path, message: "Must be at most 40 characters" });
+            return;
+          }
+          localizedReference(tag, path, { idMax: 120, nameMax: 40 }, issues);
+        });
       }
     }
 

@@ -1,7 +1,7 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
 import { getRecipeIdByChecksum, getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
-import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1 } from "./schema.js";
+import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
   body: BodyInit;
@@ -160,21 +160,14 @@ function displayGlassware(recipe: RecipeSharePayloadV1["recipe"]): string | unde
   return recipe.glasswareName?.trim() || recipe.glassware?.trim() || recipe.glasswareId?.trim() || undefined;
 }
 
-function recipeRecordJson(record: RecipeShareRecord): RecipeShareRecord {
-  const { glasswareName: _glasswareName, ingredients, ...recipe } = record.payload.recipe;
-  return {
-    ...record,
-    payload: {
-      ...record.payload,
-      recipe: {
-        ...recipe,
-        ingredients: ingredients.map((ingredient) => {
-          const { unitName: _unitName, ...publicIngredient } = ingredient;
-          return publicIngredient;
-        }),
-      },
-    },
-  };
+function displayMethod(recipe: RecipeSharePayloadV1["recipe"]): string | string[] | undefined {
+  if (recipe.methodName?.trim()) return recipe.methodName.trim();
+  if (recipe.method && typeof recipe.method === "object" && !Array.isArray(recipe.method)) return recipe.method.name;
+  return recipe.method;
+}
+
+function displayTag(tag: RecipeTag): string {
+  return typeof tag === "string" ? tag : tag.name;
 }
 
 function renderIngredientAmount(ingredient: Ingredient): string {
@@ -201,7 +194,7 @@ function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   if (glassware) details.push(`<dt>Glassware</dt><dd>${escapeHtml(glassware)}</dd>`);
   if (recipe.garnish?.trim()) details.push(`<dt>Garnish</dt><dd>${escapeHtml(recipe.garnish.trim())}</dd>`);
   if (recipe.servings !== undefined) details.push(`<dt>Servings</dt><dd>${recipe.servings}</dd>`);
-  const tags = recipe.tags?.map((tag) => tag.trim()).filter(Boolean) ?? [];
+  const tags = recipe.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
   if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</dd>`);
   return details.length > 0 ? `<section><h2>Details</h2><dl>${details.join("")}</dl></section>` : "";
 }
@@ -329,7 +322,7 @@ async function handleGetRecipe(id: string, env: Env): Promise<Response> {
   if (!isValidRecipeId(id)) return jsonError("bad_request", "Invalid recipe id", 400);
   const record = await getRecipeShare(env.RECIPE_SHARES, id);
   if (!record) return jsonError("not_found", "Recipe share was not found", 404);
-  return jsonResponse(recipeRecordJson(record));
+  return jsonResponse(record);
 }
 
 export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): string {
@@ -354,7 +347,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const image = escapedImageUrl ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">` : "";
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
-  const methodSection = renderInstructionSection("Method", recipe.method, { capitalizeFirstLetter: true, singleAsParagraph: true });
+  const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
   const instructionsSection = renderInstructionSection("Instructions", recipe.instructions);
 
   return `<!doctype html>
