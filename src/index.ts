@@ -182,7 +182,17 @@ function renderIngredients(ingredients: Ingredient[]): string {
     .map((ingredient) => {
       const amount = renderIngredientAmount(ingredient);
       const note = ingredient.note?.trim();
-      return `<li>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</li>`;
+      const imageUrl = ingredient.imageUrl?.trim();
+      const image = imageUrl
+        ? `<img class="ingredient-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredient.name.trim())}" loading="lazy">`
+        : "";
+      const description = ingredient.description?.trim() ? `<p class="ingredient-description">${renderInlineMarkup(ingredient.description.trim())}</p>` : "";
+      const tags = ingredient.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
+      const tagList = tags.length > 0
+        ? `<div class="ingredient-tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</div>`
+        : "";
+
+      return `<li>${image}<div class="ingredient-content"><div>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</div>${description}${tagList}</div></li>`;
     })
     .join("");
   return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
@@ -374,6 +384,12 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     p, li, dd { color: #f3d9c2; line-height: 1.6; }
     ol, ul { padding-left: 1.35rem; }
     li + li { margin-top: 0.35rem; }
+    .ingredients { padding-left: 0; list-style: none; }
+    .ingredients li { display: flex; gap: 0.85rem; margin: 0.75rem 0; }
+    .ingredient-image { flex: 0 0 4rem; width: 4rem; height: 4rem; object-fit: cover; border-radius: 0.75rem; background: rgb(0 0 0 / 28%); }
+    .ingredient-content { min-width: 0; }
+    .ingredient-description { margin: 0.35rem 0 0; color: #f8d4b4; }
+    .ingredient-tags { margin-top: 0.45rem; }
     dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; }
     dt { color: #ffbd86; font-weight: 700; }
     dd { margin: 0; }
