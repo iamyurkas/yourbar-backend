@@ -86,6 +86,59 @@ test('payload validation accepts unit, glassware, method, and tag ids with displ
   assert.equal(result.ok, true);
 });
 
+
+test('payload validation accepts rich ingredient metadata', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      ingredients: [
+        {
+          id: 'ingredient-white-rum',
+          baseIngredientId: 'base-ingredient-rum',
+          styleIngredientId: 'style-ingredient-white-rum',
+          name: 'White rum',
+          amount: 60,
+          unitId: 'unit-ml',
+          unitName: 'ml',
+          description: 'A light-bodied rum for sours.',
+          imageUrl: 'https://api.yourbar.app/images/white-rum.webp',
+          tags: [
+            { id: 'ingredient-tag-spirit', name: 'Spirit' },
+            { id: 'ingredient-tag-rum', name: 'Rum' },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test('payload validation rejects invalid rich ingredient metadata', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      ingredients: [
+        {
+          name: 'White rum',
+          baseIngredientId: 123,
+          styleIngredientId: {},
+          imageUrl: 'not-a-url',
+          tags: [{ id: '', name: 'Spirit' }],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].baseIngredientId'));
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].styleIngredientId'));
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].imageUrl'));
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].tags[0].id'));
+});
+
 test('payload validation rejects missing recipe.name', () => {
   const result = validateRecipeSharePayloadV1({ ...validPayload, recipe: { ...validPayload.recipe, name: '' } });
   assert.equal(result.ok, false);
@@ -146,7 +199,14 @@ test('landing page includes the full recipe and image when available', () => {
         description: 'A crisp Cuban classic.',
         imageUrl: 'https://api.yourbar.app/images/daiquiri.webp',
         ingredients: [
-          { name: 'White rum', amount: 2, unit: 'oz' },
+          {
+            name: 'White rum',
+            amount: 2,
+            unit: 'oz',
+            description: 'A **clean** base spirit.',
+            imageUrl: 'https://api.yourbar.app/images/white-rum.webp',
+            tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+          },
           { name: 'Lime juice', amount: 1, unit: 'oz', note: 'fresh' },
           { name: 'Simple syrup', amount: 0.75, unit: 'oz' },
         ],
@@ -165,10 +225,17 @@ test('landing page includes the full recipe and image when available', () => {
 
   const html = renderRecipeLandingPage(record, env());
 
+  assert.match(html, /<main class="app-detail-screen">/);
+  assert.match(html, /<div class="top-bar">/);
+  assert.match(html, /<article class="hero-card">/);
+  assert.match(html, /<section class="action-panel">/);
   assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
   assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp">/);
   assert.match(html, /White rum/);
   assert.match(html, /<span class="amount">2 oz<\/span>/);
+  assert.match(html, /<img class="ingredient-image" src="https:\/\/api\.yourbar\.app\/images\/white-rum\.webp"/);
+  assert.match(html, /A <strong>clean<\/strong> base spirit\./);
+  assert.match(html, /Spirit/);
   assert.match(html, /Lime juice/);
   assert.match(html, /\(fresh\)/);
   assert.match(html, /Shake with ice\./);
@@ -387,7 +454,18 @@ test('route integration returns localized display names from recipe JSON', async
       methodName: 'Shaken',
       tags: [{ id: 'tag-classic', name: 'Classic' }],
       ingredients: [
-        { name: 'Rum', amount: 60, unitId: 'unit-ml', unitName: 'ml' },
+        {
+          id: 'ingredient-rum',
+          baseIngredientId: 'base-ingredient-rum',
+          styleIngredientId: 'style-ingredient-rum',
+          name: 'Rum',
+          amount: 60,
+          unitId: 'unit-ml',
+          unitName: 'ml',
+          description: 'Base spirit.',
+          imageUrl: 'https://api.yourbar.app/images/rum.webp',
+          tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+        },
       ],
     },
   };
@@ -406,8 +484,14 @@ test('route integration returns localized display names from recipe JSON', async
   assert.equal(stored.payload.recipe.methodId, 'method-shaken');
   assert.equal(stored.payload.recipe.methodName, 'Shaken');
   assert.deepEqual(stored.payload.recipe.tags, [{ id: 'tag-classic', name: 'Classic' }]);
+  assert.equal(stored.payload.recipe.ingredients[0].id, 'ingredient-rum');
+  assert.equal(stored.payload.recipe.ingredients[0].baseIngredientId, 'base-ingredient-rum');
+  assert.equal(stored.payload.recipe.ingredients[0].styleIngredientId, 'style-ingredient-rum');
   assert.equal(stored.payload.recipe.ingredients[0].unitId, 'unit-ml');
   assert.equal(stored.payload.recipe.ingredients[0].unitName, 'ml');
+  assert.equal(stored.payload.recipe.ingredients[0].description, 'Base spirit.');
+  assert.equal(stored.payload.recipe.ingredients[0].imageUrl, 'https://api.yourbar.app/images/rum.webp');
+  assert.deepEqual(stored.payload.recipe.ingredients[0].tags, [{ id: 'ingredient-tag-spirit', name: 'Spirit' }]);
 });
 
 

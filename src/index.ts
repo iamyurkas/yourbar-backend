@@ -182,7 +182,17 @@ function renderIngredients(ingredients: Ingredient[]): string {
     .map((ingredient) => {
       const amount = renderIngredientAmount(ingredient);
       const note = ingredient.note?.trim();
-      return `<li>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</li>`;
+      const imageUrl = ingredient.imageUrl?.trim();
+      const image = imageUrl
+        ? `<img class="ingredient-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(ingredient.name.trim())}" loading="lazy">`
+        : "";
+      const description = ingredient.description?.trim() ? `<p class="ingredient-description">${renderInlineMarkup(ingredient.description.trim())}</p>` : "";
+      const tags = ingredient.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
+      const tagList = tags.length > 0
+        ? `<div class="ingredient-tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</div>`
+        : "";
+
+      return `<li>${image}<div class="ingredient-content"><div>${amount ? `<span class="amount">${escapeHtml(amount)}</span> ` : ""}<span>${escapeHtml(ingredient.name.trim())}</span>${note ? ` <span class="note">(${escapeHtml(note)})</span>` : ""}</div>${description}${tagList}</div></li>`;
     })
     .join("");
   return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
@@ -344,7 +354,9 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const imageUrl = recipe.imageUrl?.trim();
   const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
   const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
-  const image = escapedImageUrl ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">` : "";
+  const heroMedia = escapedImageUrl
+    ? `<img class="recipe-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager">`
+    : `<div class="recipe-image recipe-image-placeholder" aria-hidden="true">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase())}</div>`;
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
   const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
@@ -363,41 +375,66 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   <meta property="og:type" content="website">${imageMeta}
   <meta property="og:url" content="${publicUrl}">
   <style>
-    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 2rem 0; background: #130f1c; color: #fff7ed; }
-    main { width: min(92vw, 42rem); overflow: hidden; border: 1px solid rgb(255 255 255 / 14%); border-radius: 1.5rem; background: rgb(255 255 255 / 8%); box-shadow: 0 24px 80px rgb(0 0 0 / 35%); }
-    .content { padding: 2rem; }
-    .eyebrow { margin-top: 0; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.78rem; color: #ffbd86; }
-    .recipe-image { display: block; width: 100%; max-height: 28rem; object-fit: cover; background: rgb(0 0 0 / 28%); }
-    h1 { margin: 0 0 0.75rem; font-size: clamp(2rem, 8vw, 3.5rem); line-height: 0.95; }
-    h2 { margin: 1.75rem 0 0.75rem; font-size: 1.1rem; color: #ffe0c2; }
+    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --page: #0f1117; --surface: #171a22; --surface-2: #20242e; --text: #fff7ed; --muted: #b9a99b; --accent: #ff8a3d; --accent-soft: rgb(255 138 61 / 14%); }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #262131 0, var(--page) 42rem); color: var(--text); }
+    .app-detail-screen { width: min(100vw, 30rem); min-height: 100vh; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) 1rem max(1.25rem, env(safe-area-inset-bottom)); background: linear-gradient(180deg, #151821 0, #101218 100%); box-shadow: 0 0 0 1px rgb(255 255 255 / 6%), 0 28px 90px rgb(0 0 0 / 45%); }
+    .top-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: -1rem -1rem 0.75rem; padding: max(1rem, env(safe-area-inset-top)) 1rem 0.85rem; background: linear-gradient(180deg, rgb(15 17 23 / 96%), rgb(15 17 23 / 78%)); backdrop-filter: blur(18px); }
+    .top-bar-title { margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .hero-card { overflow: hidden; border: 1px solid rgb(255 255 255 / 10%); border-radius: 2rem; background: var(--surface); box-shadow: 0 18px 50px rgb(0 0 0 / 32%); }
+    .recipe-image { display: block; width: 100%; aspect-ratio: 1 / 1; max-height: 28rem; object-fit: cover; background: linear-gradient(135deg, #2a2028, #3b2417); color: rgb(255 255 255 / 72%); font-size: 5rem; font-weight: 900; }
+    .recipe-image-placeholder { display: grid; place-items: center; }
+    .hero-content { padding: 1.25rem; }
+    .eyebrow { margin: 0 0 0.45rem; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; font-weight: 900; color: var(--accent); }
+    h1 { margin: 0 0 0.85rem; font-size: clamp(2.15rem, 12vw, 3.75rem); line-height: 0.92; letter-spacing: -0.06em; }
+    h2 { margin: 0 0 0.85rem; font-size: 0.86rem; color: #ffe0c2; letter-spacing: 0.09em; text-transform: uppercase; }
     p, li, dd { color: #f3d9c2; line-height: 1.6; }
-    ol, ul { padding-left: 1.35rem; }
+    .hero-content > p { margin: 0; color: #e8d7c8; }
+    .content { padding: 1rem 0 0; }
+    section { margin-top: 0.9rem; padding: 1rem; border: 1px solid rgb(255 255 255 / 8%); border-radius: 1.35rem; background: var(--surface); }
+    ol, ul { padding-left: 1.25rem; }
     li + li { margin-top: 0.35rem; }
-    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; }
-    dt { color: #ffbd86; font-weight: 700; }
-    dd { margin: 0; }
-    .amount { color: #fff7ed; font-weight: 700; }
-    .note { color: #d7b89d; }
-    .tag { display: inline-block; margin: 0 0.3rem 0.3rem 0; padding: 0.15rem 0.55rem; border-radius: 999px; background: rgb(255 255 255 / 12%); color: #ffe0c2; }
-    a.button, a.secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; text-decoration: none; font-weight: 700; }
-    a.button { background: #ff8a3d; color: #1f1208; }
-    a.secondary { margin-top: 0.75rem; margin-right: 0.5rem; border: 1px solid rgb(255 255 255 / 22%); color: #fff7ed; }
-    code { display: block; overflow-wrap: anywhere; padding: 0.85rem; border-radius: 0.75rem; background: rgb(0 0 0 / 28%); color: #ffe0c2; }
+    .ingredients { padding-left: 0; list-style: none; }
+    .ingredients li { display: flex; gap: 0.85rem; margin: 0.75rem 0; padding: 0.65rem; border-radius: 1rem; background: var(--surface-2); }
+    .ingredient-image { flex: 0 0 4rem; width: 4rem; height: 4rem; object-fit: cover; border-radius: 0.9rem; background: rgb(0 0 0 / 28%); }
+    .ingredient-content { min-width: 0; }
+    .ingredient-description { margin: 0.35rem 0 0; color: #f8d4b4; }
+    .ingredient-tags { margin-top: 0.45rem; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.65rem 1rem; margin: 0; }
+    dt { color: var(--muted); font-size: 0.73rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    dd { margin: 0; color: var(--text); font-weight: 700; }
+    .amount { color: var(--text); font-weight: 800; }
+    .note { color: var(--muted); }
+    .tag { display: inline-block; margin: 0 0.3rem 0.3rem 0; padding: 0.24rem 0.62rem; border-radius: 999px; background: var(--accent-soft); color: #ffd4ad; font-size: 0.82rem; font-weight: 800; }
+    .action-panel { background: linear-gradient(135deg, rgb(255 138 61 / 16%), rgb(255 255 255 / 6%)); }
+    a.button, a.secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; text-decoration: none; font-weight: 800; }
+    a.button { background: var(--accent); color: #1f1208; box-shadow: 0 10px 28px rgb(255 138 61 / 24%); }
+    a.secondary { margin-top: 0.75rem; margin-right: 0.5rem; border: 1px solid rgb(255 255 255 / 16%); color: #fff7ed; }
+    .top-bar .button { min-height: 2.25rem; padding: 0 0.8rem; font-size: 0.82rem; }
+    code { display: block; overflow-wrap: anywhere; padding: 0.85rem; border-radius: 0.9rem; background: rgb(0 0 0 / 24%); color: #ffe0c2; }
+    @media (min-width: 48rem) { body { padding: 2rem 0; } .app-detail-screen { min-height: auto; border-radius: 2.25rem; } .top-bar { border-radius: 2.25rem 2.25rem 0 0; } }
   </style>
 </head>
 <body>
-  <main>
-    ${image}
+  <main class="app-detail-screen">
+    <div class="top-bar">
+      <p class="top-bar-title">Recipe details</p>
+      <a class="button" href="${escapedDeepLink}">Open</a>
+    </div>
+    <article class="hero-card">
+      ${heroMedia}
+      <div class="hero-content">
+        <p class="eyebrow">YourBar cocktail recipe</p>
+        <h1>${escapedRecipeName}</h1>
+        <p>${renderInlineMarkup(description)}</p>
+      </div>
+    </article>
     <div class="content">
-      <p class="eyebrow">YourBar cocktail recipe</p>
-      <h1>${escapedRecipeName}</h1>
-      <p>${renderInlineMarkup(description)}</p>
       ${detailsSection}
       ${ingredientsSection}
       ${methodSection}
       ${instructionsSection}
-      <section>
+      <section class="action-panel">
         <h2>Open in the app</h2>
         <p>If YourBar is installed, this page will try to open the app automatically. You can also use the button below.</p>
         <p><a class="button" href="${escapedDeepLink}">Open in YourBar</a></p>
