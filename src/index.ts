@@ -385,7 +385,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     ol, ul { padding-left: 1.35rem; }
     li + li { margin-top: 0.35rem; }
     .ingredients { padding-left: 0; list-style: none; }
-    .ingredients li { display: flex; gap: 0.85rem; margin: 0.75rem 0; }
+     .ingredients li { display: flex; gap: 0.85rem; margin: 0.75rem 0; }
     .ingredient-image { flex: 0 0 4rem; width: 4rem; height: 4rem; object-fit: cover; border-radius: 0.75rem; background: rgb(0 0 0 / 28%); }
     .ingredient-content { min-width: 0; }
     .ingredient-description { margin: 0.35rem 0 0; color: #f8d4b4; }
