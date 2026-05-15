@@ -264,13 +264,25 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /<span class="tag-chip" style="--tag-color: #F06292">Medium<\/span>/);
   assert.match(html, /<span class="tag-chip" style="--tag-color: #FF8A65">Shot<\/span>/);
   assert.match(html, /<div class="store-badges">/);
-  assert.match(html, /Download on the/);
-  assert.match(html, /App Store/);
-  assert.match(html, /Get it on/);
-  assert.match(html, /Google Play/);
+  assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
+  assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
   assert.doesNotMatch(html, /<h2>Canonical API URL<\/h2>/);
 });
 
+
+
+test('static store badge assets are served from bundled image files', async () => {
+  const appStoreResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/appstore.png'), env());
+  assert.equal(appStoreResponse.status, 200);
+  assert.equal(appStoreResponse.headers.get('Content-Type'), 'image/png');
+  assert.equal(appStoreResponse.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal((await appStoreResponse.arrayBuffer()).byteLength, 7161);
+
+  const playMarketResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/playmarket.png'), env());
+  assert.equal(playMarketResponse.status, 200);
+  assert.equal(playMarketResponse.headers.get('Content-Type'), 'image/png');
+  assert.equal((await playMarketResponse.arrayBuffer()).byteLength, 10320);
+});
 
 test('landing page applies required cocktail and ingredient tag colors', () => {
   const cocktailTags = [

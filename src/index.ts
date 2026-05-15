@@ -1,6 +1,7 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
 import { getRecipeIdByChecksum, getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
+import { staticAssetResponse } from "./static-assets.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
@@ -429,8 +430,8 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const escapedDeepLink = escapeHtml(deepLink);
   const iosStoreUrl = env.IOS_APP_STORE_URL?.trim() || "https://apps.apple.com/app/your-bar-cocktail-recipes/id6758964503";
   const androidStoreUrl = env.ANDROID_PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.yourbarapp.free";
-  const iosLink = `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><span class="store-badge-kicker">Download on the</span><span class="store-badge-label">App Store</span></a>`;
-  const androidLink = `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><span class="store-badge-kicker">Get it on</span><span class="store-badge-label">Google Play</span></a>`;
+  const iosLink = `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><img src="/assets/images/appstore.png" alt="Download on the App Store" loading="lazy"></a>`;
+  const androidLink = `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><img src="/assets/images/playmarket.png" alt="Get it on Google Play" loading="lazy"></a>`;
   const imageUrl = recipe.imageUrl?.trim();
   const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
   const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
@@ -784,27 +785,17 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     }
     .store-badge {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       justify-content: center;
       min-height: 46px;
-      padding: 7px 14px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 12px;
-      background: #050507;
-      color: #ffffff;
       text-decoration: none;
     }
-    .store-badge-kicker {
-      font-size: 10px;
-      font-weight: 600;
-      line-height: 12px;
-      opacity: 0.86;
-    }
-    .store-badge-label {
-      font-size: 17px;
-      font-weight: 700;
-      line-height: 20px;
-      letter-spacing: -0.01em;
+    .store-badge img {
+      display: block;
+      width: 100%;
+      max-width: 180px;
+      height: auto;
     }
     .visually-hidden-api { display: none; }
     @media (min-width: 28rem) {
@@ -928,6 +919,15 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? jsonResponse({ ok: true, service: SERVICE_NAME })
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+    } else if (path.startsWith("/assets/")) {
+      const assetResponse = staticAssetResponse(path);
+      if (!assetResponse) {
+        response = jsonError("not_found", "Not found", 404);
+      } else if (request.method !== "GET") {
+        response = jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      } else {
+        response = assetResponse;
+      }
     } else if (path === "/api/images") {
       response = request.method === "POST"
         ? await handlePostImage(request, env)

@@ -9,7 +9,9 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "generate-static-assets": "node tools/generate-static-assets.mjs",
+    "prebuild": "npm run generate-static-assets"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

@@ -28,7 +28,7 @@ export function htmlResponse(html: string, status = 200, headers: HeadersInit = 
       "Content-Type": "text/html; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer-when-downgrade",
-      "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src https: data:; style-src 'unsafe-inline'; navigate-to *;",
+      "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self' https: data:; style-src 'unsafe-inline'; navigate-to *;",
       ...headers,
     },
   });
