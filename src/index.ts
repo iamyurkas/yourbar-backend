@@ -277,6 +277,66 @@ function renderIngredients(ingredients: Ingredient[]): string {
   return `<section><h2>Ingredients</h2><ul class="ingredients">${items}</ul></section>`;
 }
 
+type VideoService = "youtube" | "tiktok" | "instagram" | "vimeo" | "generic";
+
+function safeHttpUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function videoServiceForUrl(videoUrl: string): VideoService {
+  const hostname = new URL(videoUrl).hostname.toLowerCase().replace(/^www\./, "");
+  if (hostname === "youtu.be" || hostname.endsWith(".youtube.com") || hostname === "youtube.com") return "youtube";
+  if (hostname === "tiktok.com" || hostname.endsWith(".tiktok.com")) return "tiktok";
+  if (hostname === "instagram.com" || hostname.endsWith(".instagram.com")) return "instagram";
+  if (hostname === "vimeo.com" || hostname.endsWith(".vimeo.com")) return "vimeo";
+  return "generic";
+}
+
+function videoServiceLabel(service: VideoService): string {
+  switch (service) {
+    case "youtube":
+      return "YouTube";
+    case "tiktok":
+      return "TikTok";
+    case "instagram":
+      return "Instagram";
+    case "vimeo":
+      return "Vimeo";
+    case "generic":
+      return "Video";
+  }
+}
+
+function videoServiceIcon(service: VideoService): string {
+  switch (service) {
+    case "youtube":
+      return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M21.58 7.19a2.55 2.55 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.78.39a2.55 2.55 0 0 0-1.8 1.8A26.6 26.6 0 0 0 2 12a26.6 26.6 0 0 0 .42 4.81 2.55 2.55 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.78-.39a2.55 2.55 0 0 0 1.8-1.8A26.6 26.6 0 0 0 22 12a26.6 26.6 0 0 0-.42-4.81ZM10 15.01V8.99L15.2 12 10 15.01Z"/></svg>`;
+    case "tiktok":
+      return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M16.6 3c.36 2.12 1.55 3.4 3.65 3.54v3.3a7.42 7.42 0 0 1-3.58-1.08v5.94c0 3.01-1.9 5.3-4.79 5.3A4.74 4.74 0 0 1 7 15.23c0-3.05 2.33-5.13 5.6-4.84v3.38c-1.48-.48-2.48.22-2.48 1.43 0 1 .79 1.66 1.7 1.66 1.05 0 1.72-.63 1.72-2.11V3h3.06Z"/></svg>`;
+    case "instagram":
+      return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M7.75 2h8.5A5.76 5.76 0 0 1 22 7.75v8.5A5.76 5.76 0 0 1 16.25 22h-8.5A5.76 5.76 0 0 1 2 16.25v-8.5A5.76 5.76 0 0 1 7.75 2Zm0 2A3.75 3.75 0 0 0 4 7.75v8.5A3.75 3.75 0 0 0 7.75 20h8.5A3.75 3.75 0 0 0 20 16.25v-8.5A3.75 3.75 0 0 0 16.25 4h-8.5ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm5.25-2.1a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3Z"/></svg>`;
+    case "vimeo":
+      return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M21.5 7.23c-.08 1.86-1.38 4.4-3.91 7.61-2.62 3.36-4.84 5.04-6.65 5.04-1.12 0-2.07-1.04-2.84-3.12-.52-1.91-1.04-3.82-1.55-5.73-.58-2.08-1.2-3.12-1.86-3.12-.14 0-.65.31-1.51.91L2.28 7.65c.95-.84 1.89-1.68 2.82-2.52 1.27-1.1 2.22-1.68 2.85-1.74 1.49-.14 2.41.88 2.76 3.06.38 2.36.64 3.83.79 4.4.44 1.96.92 2.94 1.45 2.94.41 0 1.03-.65 1.85-1.95.82-1.3 1.26-2.29 1.32-2.97.12-1.12-.32-1.68-1.32-1.68-.47 0-.95.11-1.45.32.96-3.16 2.8-4.69 5.51-4.6 2.01.06 2.89 1.5 2.64 4.32Z"/></svg>`;
+    case "generic":
+      return `<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm5 3.1v6.8L15 12 9 8.6Z"/></svg>`;
+  }
+}
+
+function renderVideoLink(videoUrl: string | undefined): string {
+  const safeUrl = safeHttpUrl(videoUrl);
+  if (!safeUrl) return "";
+  const service = videoServiceForUrl(safeUrl);
+  const label = videoServiceLabel(service);
+  return `<a class="video-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Watch cocktail video on ${escapeHtml(label)}" title="Watch on ${escapeHtml(label)}">${videoServiceIcon(service)}<span>${escapeHtml(label)}</span></a>`;
+}
+
 function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   const details: string[] = [];
   const glassware = displayGlassware(recipe);
@@ -438,6 +498,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const recipeMedia = escapedImageUrl
     ? `<div class="cocktail-image-frame"><img class="cocktail-image" src="${escapedImageUrl}" alt="${escapedRecipeName} cocktail photo" loading="eager"></div>`
     : `<div class="cocktail-image-placeholder" aria-label="No photo for ${escapedRecipeName}">${escapeHtml(recipeName.slice(0, 1).toLocaleUpperCase() || "No photo")}</div>`;
+  const videoLink = renderVideoLink(recipe.video);
   const detailsSection = renderRecipeDetails(recipe);
   const ingredientsSection = renderIngredients(recipe.ingredients);
   const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
@@ -588,6 +649,31 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       font-size: 14px;
       line-height: 22px;
       text-align: left;
+    }
+    .video-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 51, 102, 0.42);
+      border-radius: 999px;
+      color: var(--tertiary);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 20px;
+      text-decoration: none;
+    }
+    .video-link:hover { background: rgba(255, 51, 102, 0.12); }
+    .video-link:focus-visible {
+      outline: 0;
+      box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.28);
+    }
+    .video-link svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+      flex: 0 0 auto;
     }
     .content {
       display: flex;
@@ -823,6 +909,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     <header class="recipe-header">
       <h1>${escapedRecipeName}</h1>
       <div class="recipe-media">${recipeMedia}</div>
+      ${videoLink}
       <p class="recipe-description">${renderInlineMarkup(description)}</p>
     </header>
     <div class="content">

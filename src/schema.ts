@@ -39,6 +39,7 @@ export type RecipeSharePayloadV1 = {
     tags?: RecipeTag[];
     servings?: number;
     imageUrl?: string;
+    video?: string;
   };
   source?: {
     app: "yourbar";
@@ -178,6 +179,7 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
     optionalString(recipe.glasswareName, "recipe.glasswareName", 120, issues);
     optionalString(recipe.garnish, "recipe.garnish", 240, issues);
     validateHttpUrl(recipe.imageUrl, "recipe.imageUrl", issues);
+    validateHttpUrl(recipe.video, "recipe.video", issues);
 
     if (!Array.isArray(recipe.ingredients) || recipe.ingredients.length < 1 || recipe.ingredients.length > 80) {
       issues.push({ path: "recipe.ingredients", message: "Must be an array with length from 1 to 80" });

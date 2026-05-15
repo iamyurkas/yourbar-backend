@@ -65,6 +65,15 @@ test('payload validation accepts a valid RecipeSharePayloadV1', () => {
   assert.equal(result.ok, true);
 });
 
+test('payload validation accepts a recipe video URL', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: { ...validPayload.recipe, video: 'https://www.youtube.com/watch?v=daiquiri-demo' },
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test('payload validation accepts unit, glassware, method, and tag ids with display names', () => {
   const result = validateRecipeSharePayloadV1({
     ...validPayload,
@@ -158,6 +167,16 @@ test('payload validation rejects invalid imageUrl', () => {
   });
   assert.equal(result.ok, false);
   assert.ok(result.issues.some((issue) => issue.path === 'recipe.imageUrl'));
+});
+
+test('payload validation rejects invalid video URL', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: { ...validPayload.recipe, video: 'ftp://example.com/video' },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.video'));
 });
 
 
@@ -269,7 +288,27 @@ test('landing page includes the full recipe and image when available', () => {
   assert.doesNotMatch(html, /<h2>Canonical API URL<\/h2>/);
 });
 
+test('landing page renders a tertiary-colored service icon link for recipe video', () => {
+  const record = {
+    id: '23456789AB',
+    payload: {
+      ...validPayload,
+      recipe: {
+        ...validPayload.recipe,
+        video: 'https://www.youtube.com/watch?v=daiquiri-demo',
+      },
+    },
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(1_000).toISOString(),
+    recipeChecksum: 'test-checksum',
+  };
 
+  const html = renderRecipeLandingPage(record, env());
+
+  assert.match(html, /--tertiary: #ff3366;/);
+  assert.match(html, /\.video-link \{[\s\S]*?color: var\(--tertiary\);/);
+  assert.match(html, /<a class="video-link" href="https:\/\/www\.youtube\.com\/watch\?v=daiquiri-demo" target="_blank" rel="noopener noreferrer" aria-label="Watch cocktail video on YouTube" title="Watch on YouTube">[\s\S]*?<span>YouTube<\/span><\/a>/);
+});
 
 test('static store badge assets are served from bundled image files', async () => {
   const appStoreResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/appstore.png'), env());
@@ -550,6 +589,7 @@ test('route integration returns localized display names from recipe JSON', async
       glasswareName: 'Coupe',
       methodId: 'method-shaken',
       methodName: 'Shaken',
+      video: 'https://www.instagram.com/reel/daiquiri-demo/',
       tags: [{ id: 'tag-classic', name: 'Classic' }],
       ingredients: [
         {
@@ -581,6 +621,7 @@ test('route integration returns localized display names from recipe JSON', async
   assert.equal(stored.payload.recipe.glasswareName, 'Coupe');
   assert.equal(stored.payload.recipe.methodId, 'method-shaken');
   assert.equal(stored.payload.recipe.methodName, 'Shaken');
+  assert.equal(stored.payload.recipe.video, 'https://www.instagram.com/reel/daiquiri-demo/');
   assert.deepEqual(stored.payload.recipe.tags, [{ id: 'tag-classic', name: 'Classic' }]);
   assert.equal(stored.payload.recipe.ingredients[0].id, 'ingredient-rum');
   assert.equal(stored.payload.recipe.ingredients[0].baseIngredientId, 'base-ingredient-rum');
