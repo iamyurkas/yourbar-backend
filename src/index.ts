@@ -170,6 +170,18 @@ function displayTag(tag: RecipeTag): string {
   return typeof tag === "string" ? tag : tag.name;
 }
 
+function tagClassName(tag: string): string {
+  const normalized = tag.trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  if (normalized === "equal-parts") return "tag tag-equal-parts";
+  if (normalized === "medium") return "tag tag-medium";
+  if (normalized === "shot") return "tag tag-shot";
+  return "tag tag-default";
+}
+
+function renderTag(tag: string): string {
+  return `<span class="${tagClassName(tag)}">${escapeHtml(tag)}</span>`;
+}
+
 function renderIngredientAmount(ingredient: Ingredient): string {
   const parts = [ingredient.amount, displayUnit(ingredient)]
     .filter((part) => part !== undefined && String(part).trim().length > 0)
@@ -190,7 +202,7 @@ function renderIngredients(ingredients: Ingredient[]): string {
       const description = ingredient.description?.trim() ? `<p class="ingredient-description">${renderInlineMarkup(ingredient.description.trim())}</p>` : "";
       const tags = ingredient.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
       const tagList = tags.length > 0
-        ? `<div class="ingredient-tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</div>`
+        ? `<div class="ingredient-tags">${tags.map((tag) => renderTag(tag)).join(" ")}</div>`
         : "";
 
       return `<li>${image}<div class="ingredient-content"><div class="ingredient-line"><span class="ingredient-name">${escapeHtml(ingredientName)}</span>${amount ? `<span class="amount">${escapeHtml(amount)}</span>` : ""}</div>${note ? `<span class="note">${escapeHtml(note)}</span>` : ""}${description}${tagList}</div></li>`;
@@ -206,7 +218,7 @@ function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   if (recipe.garnish?.trim()) details.push(`<dt>Garnish</dt><dd>${escapeHtml(recipe.garnish.trim())}</dd>`);
   if (recipe.servings !== undefined) details.push(`<dt>Servings</dt><dd>${recipe.servings}</dd>`);
   const tags = recipe.tags?.map((tag) => displayTag(tag).trim()).filter(Boolean) ?? [];
-  if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join(" ")}</dd>`);
+  if (tags.length > 0) details.push(`<dt>Tags</dt><dd>${tags.map((tag) => renderTag(tag)).join(" ")}</dd>`);
   return details.length > 0 ? `<section><h2>Details</h2><dl>${details.join("")}</dl></section>` : "";
 }
 
@@ -383,18 +395,29 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     :root {
       color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --background: #101218;
-      --surface: #171a22;
-      --surface-bright: #20242e;
-      --surface-variant: #252a35;
-      --on-surface: #fff7ed;
-      --on-surface-variant: #c7b8aa;
-      --outline: rgba(255, 255, 255, 0.12);
-      --outline-variant: rgba(255, 255, 255, 0.08);
-      --primary: #ff8a3d;
-      --tint: #ff8a3d;
-      --on-primary: #1f1208;
-      --accent-soft: rgb(255 138 61 / 14%);
+      --background: #0B1017;
+      --surface: #0F1720;
+      --surface-bright: #1B2733;
+      --surface-variant: #1B2733;
+      --outline: #3C4C5F;
+      --outline-variant: #2A3947;
+      --on-surface: #E5EAF0;
+      --on-surface-muted: #B7C1CC;
+      --on-surface-variant: #959CA5;
+      --on-background: #E5EAF0;
+      --primary: #9CCAFF;
+      --primary-container: #1E2936;
+      --on-primary: #001529;
+      --on-primary-container: #D6E4FF;
+      --secondary: #FACC15;
+      --tertiary: #ff3366;
+      --danger: #F28B82;
+      --success: #81C784;
+      --shadow: #000000;
+      --tag-equal-parts: #90CAF9;
+      --tag-medium: #F06292;
+      --tag-shot: #FF8A65;
+      --tag-default: #9CCAFF;
     }
     * { box-sizing: border-box; }
     html { background: var(--background); }
@@ -425,7 +448,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       gap: 0.75rem;
       margin: calc(max(1rem, env(safe-area-inset-top)) * -1) -24px 16px;
       padding: max(0.75rem, env(safe-area-inset-top)) 24px 12px;
-      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      background: var(--surface);
       border-bottom: 1px solid var(--outline-variant);
       backdrop-filter: blur(18px);
     }
@@ -486,7 +509,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     .recipe-description {
       width: 100%;
       margin: 0;
-      color: var(--on-surface-variant);
+      color: var(--on-surface-muted);
       font-size: 14px;
       line-height: 22px;
       text-align: left;
@@ -512,7 +535,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       text-transform: none;
     }
     p, li, dd {
-      color: var(--on-surface-variant);
+      color: var(--on-surface-muted);
       font-size: 14px;
       line-height: 22px;
     }
@@ -594,7 +617,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     .ingredient-name { min-width: 0; }
     .amount {
       flex: 0 0 auto;
-      color: var(--on-surface-variant);
+      color: var(--on-surface-muted);
       font-size: 13px;
       font-weight: 600;
       text-align: right;
@@ -602,13 +625,13 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
     .note {
       display: block;
       margin-top: 2px;
-      color: var(--on-surface-variant);
+      color: var(--on-surface-muted);
       font-size: 13px;
       line-height: 18px;
     }
     .ingredient-description {
       margin: 4px 0 0;
-      color: var(--on-surface-variant);
+      color: var(--on-surface-muted);
       font-size: 13px;
       line-height: 20px;
     }
@@ -617,19 +640,26 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       display: inline-flex;
       align-items: center;
       margin: 0 6px 6px 0;
-      padding: 6px 10px;
+      padding: 8px 14px;
+      border: 0;
       border-radius: 999px;
-      background: var(--accent-soft);
-      color: #ffd7ba;
-      font-size: 12px;
+      color: var(--on-primary);
+      font-size: 13px;
       font-weight: 600;
       line-height: 16px;
     }
+    .tag-default { background: var(--tag-default); }
+    .tag-equal-parts { background: var(--tag-equal-parts); }
+    .tag-medium { background: var(--tag-medium); }
+    .tag-shot { background: var(--tag-shot); }
     .action-panel {
       display: flex;
       flex-direction: column;
       gap: 12px;
-      padding-top: 4px;
+      padding: 16px;
+      border: 1px solid var(--outline-variant);
+      border-radius: 16px;
+      background: var(--surface);
     }
     .action-panel h2, .action-panel p { margin: 0; }
     .button {
@@ -640,6 +670,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       width: 100%;
       padding: 0 18px;
       border-radius: 10px;
+      border: 1px solid transparent;
       background: var(--primary);
       color: var(--on-primary);
       font-size: 15px;
@@ -647,7 +678,12 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       line-height: 20px;
       text-align: center;
       text-decoration: none;
-      box-shadow: 0 12px 28px rgb(255 138 61 / 20%);
+      box-shadow: none;
+    }
+    .button:hover { background: #B7D8FF; }
+    .button:focus-visible {
+      outline: 0;
+      box-shadow: 0 0 0 3px rgba(156, 202, 255, 0.28);
     }
     .store-badges {
       display: grid;
@@ -660,9 +696,9 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       justify-content: center;
       min-height: 46px;
       padding: 7px 14px;
-      border: 1px solid rgb(255 255 255 / 16%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 12px;
-      background: #050506;
+      background: #050507;
       color: #ffffff;
       text-decoration: none;
     }
@@ -688,7 +724,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
         min-height: auto;
         border: 1px solid var(--outline-variant);
         border-radius: 28px;
-        box-shadow: 0 24px 70px rgb(0 0 0 / 36%);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
         overflow: clip;
       }
       .top-bar { border-radius: 28px 28px 0 0; }

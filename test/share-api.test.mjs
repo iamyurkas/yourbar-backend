@@ -215,7 +215,7 @@ test('landing page includes the full recipe and image when available', () => {
         glassware: 'Coupe',
         garnish: 'Lime wheel',
         servings: 1,
-        tags: ['classic', 'sour'],
+        tags: ['classic', 'Equal Parts', 'Medium', 'Shot'],
       },
     },
     createdAt: new Date(0).toISOString(),
@@ -230,6 +230,14 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /<header class="recipe-header">/);
   assert.doesNotMatch(html, /<article class="hero-card">/);
   assert.match(html, /<section class="action-panel">/);
+  assert.match(html, /--background: #0B1017;/);
+  assert.match(html, /--surface: #0F1720;/);
+  assert.match(html, /--surface-bright: #1B2733;/);
+  assert.match(html, /--primary: #9CCAFF;/);
+  assert.match(html, /--on-primary: #001529;/);
+  assert.doesNotMatch(html, /#ff8a3d/i);
+  assert.doesNotMatch(html, /#fff7ed/i);
+  assert.doesNotMatch(html, /#c7b8aa/i);
   assert.match(html, /<link rel="canonical" href="https:\/\/api\.yourbar\.app\/r\/23456789AB">/);
   assert.match(html, /<link rel="alternate" type="application\/json" href="https:\/\/api\.yourbar\.app\/api\/recipes\/23456789AB">/);
   assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
@@ -246,7 +254,10 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /Garnish and serve immediately\./);
   assert.match(html, /Coupe/);
   assert.match(html, /Lime wheel/);
-  assert.match(html, /classic/);
+  assert.match(html, /<span class="tag tag-default">classic<\/span>/);
+  assert.match(html, /<span class="tag tag-equal-parts">Equal Parts<\/span>/);
+  assert.match(html, /<span class="tag tag-medium">Medium<\/span>/);
+  assert.match(html, /<span class="tag tag-shot">Shot<\/span>/);
   assert.match(html, /<div class="store-badges">/);
   assert.match(html, /Download on the/);
   assert.match(html, /App Store/);
