@@ -225,6 +225,10 @@ test('landing page includes the full recipe and image when available', () => {
 
   const html = renderRecipeLandingPage(record, env());
 
+  assert.match(html, /<main class="app-detail-screen">/);
+  assert.match(html, /<div class="top-bar">/);
+  assert.match(html, /<article class="hero-card">/);
+  assert.match(html, /<section class="action-panel">/);
   assert.match(html, /<img class="recipe-image" src="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp"/);
   assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp">/);
   assert.match(html, /White rum/);
