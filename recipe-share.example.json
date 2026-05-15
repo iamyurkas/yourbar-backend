@@ -70,7 +70,8 @@
       }
     ],
     "servings": 1,
-    "imageUrl": "https://example.com/daiquiri.jpg"
+    "imageUrl": "https://example.com/daiquiri.jpg",
+    "video": "https://www.youtube.com/watch?v=daiquiri-demo"
   },
   "source": {
     "app": "yourbar",
