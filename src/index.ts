@@ -921,7 +921,7 @@ export function renderHomePage(env: Env): string {
           </div>
         </div>
         <div class="cta-card" aria-label="Download Your Bar">
-          <p class="free-note">Completely free. No ads. No account required for normal use.</p>
+          <p class="free-note">Completely free. No ads.</p>
           <div class="store-badges">
             ${iosLink}
             ${androidLink}
