@@ -1,6 +1,6 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
-import { getRecipeIdByChecksum, getRecipeShare, putRecipeShare, type RecipeShareRecord } from "./storage.js";
+import { getImageKeyByChecksum, getRecipeIdByChecksum, getRecipeShare, putImageKeyByChecksum, putRecipeShare, type RecipeShareRecord } from "./storage.js";
 import { staticAssetResponse } from "./static-assets.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
@@ -36,7 +36,7 @@ export interface Env {
 
 const SERVICE_NAME = "yourbar-share-api";
 const IMAGE_FIELD_NAME = "image";
-const IMAGE_KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|png|webp)$/i;
+const IMAGE_KEY_PATTERN = /^(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:jpg|png|webp)$/i;
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -160,9 +160,9 @@ function recipeUrls(env: Env, id: string): { publicUrl: string; apiUrl: string }
   };
 }
 
-function imageObjectKey(contentType: string): string {
+function imageObjectKeyFromChecksum(checksum: string, contentType: string): string {
   const extension = ALLOWED_IMAGE_TYPES[contentType] ?? "bin";
-  return `${crypto.randomUUID()}.${extension}`;
+  return `${checksum}.${extension}`;
 }
 
 function canonicalizeForChecksum(value: unknown): unknown {
@@ -186,10 +186,14 @@ function bytesToHex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function sha256Hex(value: BufferSource): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", value);
+  return bytesToHex(digest);
+}
+
 export async function recipeChecksum(recipe: unknown): Promise<string> {
   const canonicalRecipe = JSON.stringify(canonicalizeForChecksum(recipe));
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalRecipe));
-  return bytesToHex(digest);
+  return sha256Hex(new TextEncoder().encode(canonicalRecipe));
 }
 
 function normalizeTextLines(value: string | string[] | undefined): string[] {
@@ -387,18 +391,34 @@ async function handlePostImage(request: Request, env: Env): Promise<Response> {
     return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
   }
 
-  const key = imageObjectKey(image.type);
   const bytes = await image.arrayBuffer();
   if (bytes.byteLength > maxBytes) {
     return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
   }
 
+  const checksum = await sha256Hex(bytes);
+  const mappedKey = await getImageKeyByChecksum(env.RECIPE_SHARES, checksum);
+  if (mappedKey) {
+    const existing = await env.RECIPE_IMAGES.get(mappedKey);
+    if (existing) {
+      return jsonResponse({ key: mappedKey, imageUrl: `${imagePublicBaseUrl(env)}/${mappedKey}`, imageChecksum: checksum, duplicate: true }, 200);
+    }
+  }
+
+  const key = imageObjectKeyFromChecksum(checksum, image.type);
+  const existing = await env.RECIPE_IMAGES.get(key);
+  if (existing) {
+    await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key);
+    return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: true }, 200);
+  }
+
   await env.RECIPE_IMAGES.put(key, bytes, {
     httpMetadata: { contentType: image.type },
-    customMetadata: { originalName: image.name.slice(0, 256) },
+    customMetadata: { originalName: image.name.slice(0, 256), imageChecksum: checksum },
   });
+  await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key);
 
-  return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}` }, 201);
+  return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: false }, 201);
 }
 
 async function handleGetImage(key: string, env: Env): Promise<Response> {
