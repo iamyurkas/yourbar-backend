@@ -23,8 +23,31 @@
             "name": "Spirit"
           }
         ],
-        "baseIngredientId": "base-ingredient-rum",
-        "styleIngredientId": "style-ingredient-white-rum"
+        "baseIngredientId": [
+          {
+            "id": "base-ingredient-rum",
+            "name": "Rum",
+            "description": "A sugarcane spirit.",
+            "imageUrl": "https://api.yourbar.app/images/rum.webp",
+            "tags": [
+              {
+                "id": "ingredient-tag-spirit",
+                "name": "Spirit"
+              }
+            ]
+          }
+        ],
+        "styleIngredientId": [
+          {
+            "id": "style-ingredient-white-rum",
+            "name": "White rum",
+            "description": "A clean light-bodied rum style.",
+            "imageUrl": "https://api.yourbar.app/images/white-rum.webp",
+            "tags": [
+              "rum"
+            ]
+          }
+        ]
       },
       {
         "name": "Fresh lime juice",
@@ -40,8 +63,34 @@
             "name": "Citrus"
           }
         ],
-        "baseIngredientId": "base-ingredient-lime",
-        "styleIngredientId": "style-ingredient-lime-juice"
+        "baseIngredientId": [
+          {
+            "id": "base-ingredient-lime",
+            "name": "Lime",
+            "description": "Fresh citrus used for acidity.",
+            "imageUrl": "https://api.yourbar.app/images/lime.webp",
+            "tags": [
+              {
+                "id": "ingredient-tag-citrus",
+                "name": "Citrus"
+              }
+            ]
+          }
+        ],
+        "styleIngredientId": [
+          {
+            "id": "style-ingredient-lime-juice",
+            "name": "Fresh lime juice",
+            "description": "Freshly squeezed lime juice.",
+            "imageUrl": "https://api.yourbar.app/images/lime-juice.webp",
+            "tags": [
+              {
+                "id": "ingredient-tag-citrus",
+                "name": "Citrus"
+              }
+            ]
+          }
+        ]
       },
       {
         "name": "Simple syrup",

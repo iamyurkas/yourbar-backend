@@ -6,10 +6,21 @@ export type LocalizedReference = {
 export type RecipeTag = string | LocalizedReference;
 export type RecipeMethod = string | string[] | LocalizedReference;
 
+export type IngredientDetails = {
+  id?: string;
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+  tags?: RecipeTag[];
+  [key: string]: unknown;
+};
+
+export type IngredientReference = string | IngredientDetails[];
+
 export type Ingredient = {
   id?: string;
-  baseIngredientId?: string;
-  styleIngredientId?: string;
+  baseIngredientId?: IngredientReference;
+  styleIngredientId?: IngredientReference;
   name: string;
   description?: string;
   imageUrl?: string;
@@ -147,6 +158,34 @@ function validateHttpUrl(value: unknown, path: string, issues: ValidationIssue[]
   }
 }
 
+function ingredientReference(value: unknown, path: string, issues: ValidationIssue[]): void {
+  if (value === undefined) return;
+
+  if (isString(value)) {
+    if (value.length > 120) issues.push({ path, message: "Must be at most 120 characters" });
+    return;
+  }
+
+  if (!Array.isArray(value) || value.length > 80) {
+    issues.push({ path, message: "Must be a string id or an array of ingredient detail objects" });
+    return;
+  }
+
+  value.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`;
+    if (!isObject(item)) {
+      issues.push({ path: itemPath, message: "Ingredient details must be an object" });
+      return;
+    }
+
+    optionalString(item.id, `${itemPath}.id`, 120, issues);
+    optionalString(item.name, `${itemPath}.name`, 120, issues);
+    optionalString(item.description, `${itemPath}.description`, 2000, issues);
+    validateHttpUrl(item.imageUrl, `${itemPath}.imageUrl`, issues);
+    validateTags(item.tags, `${itemPath}.tags`, { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
+  });
+}
+
 export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
   const issues: ValidationIssue[] = [];
 
@@ -191,8 +230,8 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
           return;
         }
         optionalString(ingredient.id, `${path}.id`, 120, issues);
-        optionalString(ingredient.baseIngredientId, `${path}.baseIngredientId`, 120, issues);
-        optionalString(ingredient.styleIngredientId, `${path}.styleIngredientId`, 120, issues);
+        ingredientReference(ingredient.baseIngredientId, `${path}.baseIngredientId`, issues);
+        ingredientReference(ingredient.styleIngredientId, `${path}.styleIngredientId`, issues);
         if (!isString(ingredient.name) || ingredient.name.trim().length < 1 || ingredient.name.trim().length > 120) {
           issues.push({ path: `${path}.name`, message: "Must be a string with trimmed length from 1 to 120" });
         }
