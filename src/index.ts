@@ -337,6 +337,26 @@ function renderVideoLink(videoUrl: string | undefined): string {
   return `<a class="video-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Watch cocktail video on ${escapeHtml(label)}" title="Watch on ${escapeHtml(label)}">${videoServiceIcon(service)}<span>${escapeHtml(label)}</span></a>`;
 }
 
+const shareText = {
+  share: "Share cocktail",
+  exportAsPhoto: "Export as photo",
+  shareAsLink: "Share as link",
+} as const;
+
+function renderShareMenu(publicUrl: string, imageUrl?: string): string {
+  const escapedPublicUrl = escapeHtml(publicUrl);
+  const exportHref = imageUrl?.trim() ? escapeHtml(imageUrl.trim()) : escapedPublicUrl;
+  const exportAttributes = imageUrl?.trim() ? ` download` : "";
+
+  return `<details class="share-menu">
+        <summary class="button share-trigger">${shareText.share}</summary>
+        <div class="share-popover" role="dialog" aria-label="${shareText.share}">
+          <a class="button secondary-button" href="${exportHref}"${exportAttributes}>${shareText.exportAsPhoto}</a>
+          <button class="button secondary-button" type="button" data-share-link="${escapedPublicUrl}">${shareText.shareAsLink}</button>
+        </div>
+      </details>`;
+}
+
 function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   const details: string[] = [];
   const glassware = displayGlassware(recipe);
@@ -921,7 +941,7 @@ export function renderHomePage(env: Env): string {
           </div>
         </div>
         <div class="cta-card" aria-label="Download Your Bar">
-          <p class="free-note">Completely free. No ads.</p>
+          <p class="free-note">Completely free. No ads. No account required for normal use.</p>
           <div class="store-badges">
             ${iosLink}
             ${androidLink}
@@ -1011,6 +1031,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const ingredientsSection = renderIngredients(recipe.ingredients);
   const methodSection = renderInstructionSection("Method", displayMethod(recipe), { capitalizeFirstLetter: true, singleAsParagraph: true });
   const instructionsSection = renderInstructionSection("Instructions", recipe.instructions);
+  const shareMenu = renderShareMenu(urls.publicUrl, imageUrl);
 
   return `<!doctype html>
 <html lang="en">
@@ -1372,6 +1393,36 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       outline: 0;
       box-shadow: 0 0 0 3px rgba(156, 202, 255, 0.28);
     }
+    .secondary-button {
+      min-height: 48px;
+      border-color: var(--outline-variant);
+      background: var(--surface-bright);
+      color: var(--on-surface);
+    }
+    .secondary-button:hover { background: #243445; }
+    .share-menu {
+      position: relative;
+      width: 100%;
+    }
+    .share-menu > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    .share-menu > summary::-webkit-details-marker { display: none; }
+    .share-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 4;
+      display: grid;
+      width: min(100%, 18rem);
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--outline-variant);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
+    }
     .store-badges {
       display: grid;
       grid-template-columns: 1fr;
@@ -1419,6 +1470,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       <div class="recipe-media">${recipeMedia}</div>
       ${videoLink}
       <p class="recipe-description">${renderInlineMarkup(description)}</p>
+      ${shareMenu}
     </header>
     <div class="content">
       ${detailsSection}
@@ -1437,6 +1489,24 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
       <span class="visually-hidden-api" hidden aria-hidden="true">${apiUrl}</span>
     </div>
   </main>
+  <script>
+    (() => {
+      const shareButton = document.querySelector('[data-share-link]');
+      shareButton?.addEventListener('click', async () => {
+        const url = shareButton.getAttribute('data-share-link') || window.location.href;
+        if (navigator.share) {
+          await navigator.share({ title: document.title, url });
+          return;
+        }
+        await navigator.clipboard?.writeText(url);
+      });
+      document.addEventListener('click', (event) => {
+        document.querySelectorAll('.share-menu[open]').forEach((menu) => {
+          if (!menu.contains(event.target)) menu.removeAttribute('open');
+        });
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
