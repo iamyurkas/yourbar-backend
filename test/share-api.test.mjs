@@ -308,6 +308,12 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /<span class="tag-chip" style="--tag-color: #64B5F6">Equal Parts<\/span>/);
   assert.match(html, /<span class="tag-chip" style="--tag-color: #F06292">Medium<\/span>/);
   assert.match(html, /<span class="tag-chip" style="--tag-color: #FF8A65">Shot<\/span>/);
+  assert.match(html, /<details class="share-menu">/);
+  assert.match(html, /<summary class="button share-trigger">Share cocktail<\/summary>/);
+  assert.match(html, /<div class="share-popover" role="dialog" aria-label="Share cocktail">/);
+  assert.match(html, /<a class="button secondary-button" href="https:\/\/api\.yourbar\.app\/images\/daiquiri\.webp" download>Export as photo<\/a>/);
+  assert.match(html, /<button class="button secondary-button" type="button" data-share-link="https:\/\/api\.yourbar\.app\/r\/23456789AB">Share as link<\/button>/);
+  assert.match(html, /const shareButton = document\.querySelector\('\[data-share-link\]'\);/);
   assert.match(html, /<div class="store-badges">/);
   assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
   assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
