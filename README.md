@@ -123,7 +123,7 @@ Response:
 
 ### Upload recipe image
 
-Upload images separately from recipe JSON. The form field name must be `image`, and the file must be JPEG, PNG, or WebP. The response `imageUrl` can then be sent in `recipe.imageUrl` when creating a recipe share.
+Upload images separately from recipe JSON. The form field name must be `image`, and the file must be JPEG, PNG, or WebP. Uploads are deduplicated by a SHA-256 checksum of the image bytes: if the same image already exists, the API returns the existing `imageUrl` instead of storing another copy. The response `imageUrl` can then be sent in `recipe.imageUrl` when creating a recipe share.
 
 ```bash
 curl -i -X POST http://localhost:8787/api/images \
@@ -134,12 +134,14 @@ Response:
 
 ```json
 {
-  "key": "2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp",
-  "imageUrl": "https://api.yourbar.app/images/2f1a4b7e-9f2d-4f8a-bb2b-c54b5a3a5e9c.webp"
+  "key": "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a.webp",
+  "imageUrl": "https://api.yourbar.app/images/9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a.webp",
+  "imageChecksum": "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+  "duplicate": false
 }
 ```
 
-Uploaded image URLs are public read URLs. Store only the returned `imageUrl` in recipe payloads rather than embedding Base64 image data.
+Uploaded image URLs are public read URLs. New uploads return `201` with `duplicate: false`; repeated uploads of the same bytes return `200` with `duplicate: true` and the original URL. Store only the returned `imageUrl` in recipe payloads rather than embedding Base64 image data.
 
 ### Create recipe share
 

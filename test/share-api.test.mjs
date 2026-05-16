@@ -32,11 +32,14 @@ class MockKV {
 
 class MockR2 {
   values = new Map();
+  putCount = 0;
   async put(key, value, options = {}) {
+    this.putCount += 1;
     this.values.set(key, {
       body: value,
       httpEtag: 'mock-etag',
       contentType: options.httpMetadata?.contentType,
+      customMetadata: options.customMetadata,
     });
   }
   async get(key) {
@@ -787,6 +790,38 @@ test('route integration uploads and serves a recipe image using mocked R2', asyn
   assert.equal(image.headers.get('Content-Type'), 'image/webp');
   assert.equal(image.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
   assert.deepEqual(new Uint8Array(await image.arrayBuffer()), new Uint8Array([1, 2, 3, 4]));
+});
+
+test('image upload reuses an existing image with the same bytes', async () => {
+  const bucket = new MockR2();
+  const bindings = env({ RECIPE_IMAGES: bucket, MAX_IMAGE_BYTES: '1024' });
+
+  const firstForm = new FormData();
+  firstForm.set('image', new File([new Uint8Array([1, 2, 3, 4])], 'first.webp', { type: 'image/webp' }));
+  const first = await handleRequest(new Request('https://api.yourbar.app/api/images', {
+    method: 'POST',
+    body: firstForm,
+  }), bindings);
+
+  const secondForm = new FormData();
+  secondForm.set('image', new File([new Uint8Array([1, 2, 3, 4])], 'second.webp', { type: 'image/webp' }));
+  const second = await handleRequest(new Request('https://api.yourbar.app/api/images', {
+    method: 'POST',
+    body: secondForm,
+  }), bindings);
+
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 200);
+
+  const created = await first.json();
+  const duplicate = await second.json();
+  assert.match(created.key, /^[0-9a-f]{64}\.webp$/);
+  assert.equal(created.duplicate, false);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.key, created.key);
+  assert.equal(duplicate.imageUrl, created.imageUrl);
+  assert.equal(duplicate.imageChecksum, created.imageChecksum);
+  assert.equal(bucket.putCount, 1);
 });
 
 test('image upload rejects unsupported content types', async () => {

@@ -18,6 +18,10 @@ export function recipeChecksumKey(checksum: string): string {
   return `recipe-checksum:${checksum}`;
 }
 
+export function imageChecksumKey(checksum: string): string {
+  return `image-checksum:${checksum}`;
+}
+
 export async function putRecipeShare(kv: RecipeShareKV, record: RecipeShareRecord, ttlSeconds: number): Promise<void> {
   await kv.put(recipeKey(record.id), JSON.stringify(record), { expirationTtl: ttlSeconds });
   await kv.put(recipeChecksumKey(record.recipeChecksum), record.id, { expirationTtl: ttlSeconds });
@@ -30,4 +34,12 @@ export async function getRecipeShare(kv: RecipeShareKV, id: string): Promise<Rec
 
 export async function getRecipeIdByChecksum(kv: RecipeShareKV, checksum: string): Promise<string | null> {
   return (await kv.get(recipeChecksumKey(checksum))) ?? null;
+}
+
+export async function putImageKeyByChecksum(kv: RecipeShareKV, checksum: string, key: string): Promise<void> {
+  await kv.put(imageChecksumKey(checksum), key);
+}
+
+export async function getImageKeyByChecksum(kv: RecipeShareKV, checksum: string): Promise<string | null> {
+  return (await kv.get(imageChecksumKey(checksum))) ?? null;
 }
