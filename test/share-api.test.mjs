@@ -199,14 +199,18 @@ test('home page presents the app logo, description, and store links', async () =
 
   assert.match(html, /<h1 id="app-title">Your Bar<\/h1>/);
   assert.match(html, /--brand-blue: #4DABF7;/);
+  assert.match(html, /width: min\(1230px, 100%\);/);
   assert.match(html, /<img src="\/assets\/images\/cocktails\.svg" alt="" aria-hidden="true">/);
   assert.match(html, /filter: brightness\(0\) invert\(1\);/);
   assert.match(html, /Your Bar helps you discover cocktails you can actually make\./);
   assert.match(html, /Add the ingredients you already have and instantly see which cocktails are available\./);
   assert.match(html, /Track ingredients and build your home bar/);
   assert.match(html, /Add ingredients manually or by scanning barcodes/);
+  assert.match(html, /Share cocktail recipes with friends using public links/);
+  assert.match(html, /Open shared recipes and import them into your bar/);
+  assert.match(html, /Optionally sync your bars, ingredients, cocktails, and settings via Google Drive/);
   assert.match(html, /\(rum OR gin\) AND \(campari OR aperol\)/);
-  assert.match(html, /Completely free\. No ads\./);
+  assert.match(html, /Completely free\. No ads\. No account required for normal use\./);
   assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
   assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
 

@@ -493,9 +493,9 @@ export function renderHomePage(env: Env): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Your Bar | Cocktail recipes you can actually make</title>
-  <meta name="description" content="Your Bar helps you discover cocktails you can actually make. Add your ingredients and instantly see available recipes.">
+  <meta name="description" content="Track your home bar, discover cocktails you can make, plan parties, and share recipes with friends.">
   <meta property="og:title" content="Your Bar">
-  <meta property="og:description" content="Discover cocktails you can actually make with the ingredients you already have.">
+  <meta property="og:description" content="Track your home bar, discover cocktails you can make, plan parties, and share recipes with friends.">
   <meta property="og:type" content="website">
   <style>
     :root {
@@ -533,7 +533,7 @@ export function renderHomePage(env: Env): string {
     }
     a { color: inherit; }
     .page {
-      width: min(1180px, 100%);
+      width: min(1230px, 100%);
       min-height: 100svh;
       margin: 0 auto;
       padding: clamp(12px, 2.1vw, 24px);
@@ -911,12 +911,13 @@ export function renderHomePage(env: Env): string {
             </div>
           </div>
           <p class="lede">Your Bar helps you discover cocktails you can actually make.</p>
-          <p class="sublede">Add the ingredients you already have and instantly see which cocktails are available. No more scrolling through recipes missing half the ingredients.</p>
+          <p class="sublede">Add the ingredients you already have and instantly see which cocktails are available. No more scrolling through recipes that are missing half the ingredients.</p>
           <div class="highlight-strip" aria-label="Your Bar highlights">
             <div class="mini-stat"><strong>Home bar tracking</strong><span>Track ingredients and build your home bar.</span></div>
             <div class="mini-stat"><strong>Barcode scanning</strong><span>Add ingredients manually or by scanning barcodes.</span></div>
             <div class="mini-stat"><strong>Make it now</strong><span>Discover cocktails you can make right now.</span></div>
             <div class="mini-stat"><strong>Missing ingredients</strong><span>See missing ingredients for each recipe.</span></div>
+            <div class="mini-stat"><strong>Public links</strong><span>Share cocktail recipes with friends using public links.</span></div>
           </div>
         </div>
         <div class="cta-card" aria-label="Download Your Bar">
@@ -935,15 +936,16 @@ export function renderHomePage(env: Env): string {
             <li>Add ingredients manually or by scanning barcodes</li>
             <li>Discover cocktails you can make right now</li>
             <li>See missing ingredients for each recipe</li>
+            <li>Save and rate your favorite drinks</li>
+            <li>Sort ingredients and cocktails</li>
           </ul>
         </section>
         <section class="feature-card large">
-          <h2 class="card-title"><span class="icon-dot">⭐</span> Save your taste</h2>
+          <h2 class="card-title"><span class="icon-dot">🔗</span> Share recipes</h2>
           <ul class="feature-list">
-            <li>Save and rate your favorite drinks</li>
-            <li>Sort ingredients and cocktails</li>
-            <li>Multiple bars for different setups</li>
-            <li>Dark mode</li>
+            <li>Share cocktail recipes with friends using public links</li>
+            <li>Open shared recipes and import them into your bar</li>
+            <li>Preview shared recipe ingredients before importing</li>
           </ul>
         </section>
         <section class="feature-card medium accent">
@@ -955,7 +957,7 @@ export function renderHomePage(env: Env): string {
         </section>
         <section class="feature-card medium">
           <h2 class="card-title"><span class="icon-dot">☁️</span> Keep your data in sync across devices:</h2>
-          <p class="note">Securely sync your bars, ingredients, cocktails, and settings via Google Drive</p>
+          <p class="note">Optionally sync your bars, ingredients, cocktails, and settings via Google Drive</p>
         </section>
         <section class="feature-card medium">
           <h2 class="card-title"><span class="icon-dot">⚖️</span> Choose how recipes are displayed:</h2>
@@ -973,6 +975,7 @@ export function renderHomePage(env: Env): string {
             <li>Multiple bars for different setups</li>
             <li>Dark mode</li>
             <li>Completely free. No ads.</li>
+            <li>No account required for normal use</li>
           </ul>
         </section>
       </div>
