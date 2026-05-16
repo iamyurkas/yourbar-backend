@@ -182,7 +182,7 @@ Response:
 
 If the canonicalized `recipe` object already exists, the Worker returns the existing share with `200 OK` and `"duplicate": true` rather than writing another `recipe:{id}` record. Canonicalization sorts object keys and trims string values before hashing, while preserving array order.
 
-Recipe ingredients may include their own share-row `id`, `baseIngredientId`, `styleIngredientId`, `description`, `imageUrl`, `tags`, `unitId`, and `unitName`; recipes may include `glasswareId`/`glasswareName`, `methodId`/`methodName`, or a localized `method` object shaped as `{ "id": "method-id", "name": "Localized name" }`; and both recipe-level and ingredient-level `tags` may be either legacy strings or localized tag objects shaped as `{ "id": "tag-id", "name": "Localized name" }`. The landing page displays recipe and ingredient metadata using localized names when present, and `GET /api/recipes/{id}` returns IDs, localized names, ingredient images, descriptions, tags, and any other stored payload fields exactly as stored. Legacy `unit`, `glassware`, `method`, and string `tags` values are still accepted and displayed as before.
+Recipe ingredients may include their own share-row `id`, `baseIngredientId`, `styleIngredientId`, `description`, `imageUrl`, `tags`, `unitId`, and `unitName`; `baseIngredientId` and `styleIngredientId` may be either legacy string IDs or arrays of detailed ingredient objects containing fields such as `id`, `name`, `description`, `imageUrl`, and `tags`; recipes may include `glasswareId`/`glasswareName`, `methodId`/`methodName`, or a localized `method` object shaped as `{ "id": "method-id", "name": "Localized name" }`; and both recipe-level and ingredient-level `tags` may be either legacy strings or localized tag objects shaped as `{ "id": "tag-id", "name": "Localized name" }`. The landing page displays recipe and ingredient metadata using localized names when present, and `GET /api/recipes/{id}` returns IDs, detailed base/style ingredient arrays, localized names, ingredient images, descriptions, tags, and any other stored payload fields exactly as stored. Legacy `unit`, `glassware`, `method`, and string `tags` values are still accepted and displayed as before.
 
 ### Fetch recipe share
 
@@ -204,8 +204,24 @@ Response:
         {
           "id": "ingredient-white-rum",
           "name": "White rum",
-          "baseIngredientId": "base-ingredient-rum",
-          "styleIngredientId": "style-ingredient-white-rum",
+          "baseIngredientId": [
+            {
+              "id": "base-ingredient-rum",
+              "name": "Rum",
+              "description": "A sugarcane spirit.",
+              "imageUrl": "https://api.yourbar.app/images/rum.webp",
+              "tags": [{ "id": "ingredient-tag-spirit", "name": "Spirit" }]
+            }
+          ],
+          "styleIngredientId": [
+            {
+              "id": "style-ingredient-white-rum",
+              "name": "White rum",
+              "description": "A clean light-bodied rum style.",
+              "imageUrl": "https://api.yourbar.app/images/white-rum.webp",
+              "tags": ["rum"]
+            }
+          ],
           "amount": 60,
           "unitId": "unit-ml",
           "unitName": "ml",
@@ -254,8 +270,24 @@ Response:
     "ingredients": [
       {
         "id": "ingredient-white-rum",
-        "baseIngredientId": "base-ingredient-rum",
-        "styleIngredientId": "style-ingredient-white-rum",
+        "baseIngredientId": [
+          {
+            "id": "base-ingredient-rum",
+            "name": "Rum",
+            "description": "A sugarcane spirit.",
+            "imageUrl": "https://api.yourbar.app/images/rum.webp",
+            "tags": [{ "id": "ingredient-tag-spirit", "name": "Spirit" }]
+          }
+        ],
+        "styleIngredientId": [
+          {
+            "id": "style-ingredient-white-rum",
+            "name": "White rum",
+            "description": "A clean light-bodied rum style.",
+            "imageUrl": "https://api.yourbar.app/images/white-rum.webp",
+            "tags": ["rum"]
+          }
+        ],
         "name": "White rum",
         "amount": 60,
         "unitId": "unit-ml",
@@ -266,8 +298,24 @@ Response:
       },
       {
         "id": "ingredient-lime-juice",
-        "baseIngredientId": "base-ingredient-lime",
-        "styleIngredientId": "style-ingredient-lime-juice",
+        "baseIngredientId": [
+          {
+            "id": "base-ingredient-lime",
+            "name": "Lime",
+            "description": "Fresh citrus used for acidity.",
+            "imageUrl": "https://api.yourbar.app/images/lime.webp",
+            "tags": [{ "id": "ingredient-tag-citrus", "name": "Citrus" }]
+          }
+        ],
+        "styleIngredientId": [
+          {
+            "id": "style-ingredient-lime-juice",
+            "name": "Fresh lime juice",
+            "description": "Freshly squeezed lime juice.",
+            "imageUrl": "https://api.yourbar.app/images/lime-juice.webp",
+            "tags": [{ "id": "ingredient-tag-citrus", "name": "Citrus" }]
+          }
+        ],
         "name": "Fresh lime juice",
         "amount": 30,
         "unitId": "unit-ml",

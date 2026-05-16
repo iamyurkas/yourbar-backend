@@ -124,6 +124,40 @@ test('payload validation accepts rich ingredient metadata', () => {
   assert.equal(result.ok, true);
 });
 
+test('payload validation accepts detailed base and style ingredient arrays', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      ingredients: [
+        {
+          name: 'White rum',
+          baseIngredientId: [
+            {
+              id: 'base-ingredient-rum',
+              name: 'Rum',
+              description: 'A sugarcane spirit.',
+              imageUrl: 'https://api.yourbar.app/images/rum.webp',
+              tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+            },
+          ],
+          styleIngredientId: [
+            {
+              id: 'style-ingredient-white-rum',
+              name: 'White rum',
+              description: 'A clear rum style.',
+              imageUrl: 'https://api.yourbar.app/images/white-rum.webp',
+              tags: ['rum'],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+});
+
 test('payload validation rejects invalid rich ingredient metadata', () => {
   const result = validateRecipeSharePayloadV1({
     ...validPayload,
@@ -210,7 +244,8 @@ test('home page presents the app logo, description, and store links', async () =
   assert.match(html, /Open shared recipes and import them into your bar/);
   assert.match(html, /Optionally sync your bars, ingredients, cocktails, and settings via Google Drive/);
   assert.match(html, /\(rum OR gin\) AND \(campari OR aperol\)/);
-  assert.match(html, /Completely free\. No ads\. No account required for normal use\./);
+  assert.match(html, /Completely free\. No ads\./);
+  assert.match(html, /No account required for normal use/);
   assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
   assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
 
@@ -626,8 +661,24 @@ test('route integration returns localized display names from recipe JSON', async
       ingredients: [
         {
           id: 'ingredient-rum',
-          baseIngredientId: 'base-ingredient-rum',
-          styleIngredientId: 'style-ingredient-rum',
+          baseIngredientId: [
+            {
+              id: 'base-ingredient-rum',
+              name: 'Rum',
+              description: 'Sugarcane spirit.',
+              imageUrl: 'https://api.yourbar.app/images/base-rum.webp',
+              tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+            },
+          ],
+          styleIngredientId: [
+            {
+              id: 'style-ingredient-rum',
+              name: 'Aged rum',
+              description: 'Rum with barrel character.',
+              imageUrl: 'https://api.yourbar.app/images/style-rum.webp',
+              tags: ['rum'],
+            },
+          ],
           name: 'Rum',
           amount: 60,
           unitId: 'unit-ml',
@@ -656,8 +707,24 @@ test('route integration returns localized display names from recipe JSON', async
   assert.equal(stored.payload.recipe.video, 'https://www.instagram.com/reel/daiquiri-demo/');
   assert.deepEqual(stored.payload.recipe.tags, [{ id: 'tag-classic', name: 'Classic' }]);
   assert.equal(stored.payload.recipe.ingredients[0].id, 'ingredient-rum');
-  assert.equal(stored.payload.recipe.ingredients[0].baseIngredientId, 'base-ingredient-rum');
-  assert.equal(stored.payload.recipe.ingredients[0].styleIngredientId, 'style-ingredient-rum');
+  assert.deepEqual(stored.payload.recipe.ingredients[0].baseIngredientId, [
+    {
+      id: 'base-ingredient-rum',
+      name: 'Rum',
+      description: 'Sugarcane spirit.',
+      imageUrl: 'https://api.yourbar.app/images/base-rum.webp',
+      tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+    },
+  ]);
+  assert.deepEqual(stored.payload.recipe.ingredients[0].styleIngredientId, [
+    {
+      id: 'style-ingredient-rum',
+      name: 'Aged rum',
+      description: 'Rum with barrel character.',
+      imageUrl: 'https://api.yourbar.app/images/style-rum.webp',
+      tags: ['rum'],
+    },
+  ]);
   assert.equal(stored.payload.recipe.ingredients[0].unitId, 'unit-ml');
   assert.equal(stored.payload.recipe.ingredients[0].unitName, 'ml');
   assert.equal(stored.payload.recipe.ingredients[0].description, 'Base spirit.');
