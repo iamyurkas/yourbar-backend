@@ -30,6 +30,7 @@ export type Ingredient = {
   unitId?: string;
   unitName?: string;
   note?: string;
+  substitutes?: Ingredient[];
 };
 
 export type RecipeSharePayloadV1 = {
@@ -186,6 +187,42 @@ function ingredientReference(value: unknown, path: string, issues: ValidationIss
   });
 }
 
+function validateIngredient(value: unknown, path: string, issues: ValidationIssue[], depth = 0): void {
+  if (!isObject(value)) {
+    issues.push({ path, message: "Ingredient must be an object" });
+    return;
+  }
+
+  optionalString(value.id, `${path}.id`, 120, issues);
+  ingredientReference(value.baseIngredientId, `${path}.baseIngredientId`, issues);
+  ingredientReference(value.styleIngredientId, `${path}.styleIngredientId`, issues);
+  if (!isString(value.name) || value.name.trim().length < 1 || value.name.trim().length > 120) {
+    issues.push({ path: `${path}.name`, message: "Must be a string with trimmed length from 1 to 120" });
+  }
+  optionalString(value.description, `${path}.description`, 2000, issues);
+  validateHttpUrl(value.imageUrl, `${path}.imageUrl`, issues);
+  validateTags(value.tags, `${path}.tags`, { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
+  if (value.amount !== undefined && typeof value.amount !== "number" && !isString(value.amount)) {
+    issues.push({ path: `${path}.amount`, message: "Must be a number or string" });
+  }
+  optionalString(value.unit, `${path}.unit`, 80, issues);
+  optionalString(value.unitId, `${path}.unitId`, 80, issues);
+  optionalString(value.unitName, `${path}.unitName`, 80, issues);
+  optionalString(value.note, `${path}.note`, 240, issues);
+
+  if (value.substitutes === undefined) return;
+  if (!Array.isArray(value.substitutes) || value.substitutes.length > 80) {
+    issues.push({ path: `${path}.substitutes`, message: "Must be an array of up to 80 substitute ingredient objects" });
+    return;
+  }
+  if (depth >= 3) {
+    issues.push({ path: `${path}.substitutes`, message: "Substitute ingredients may be nested up to 3 levels" });
+    return;
+  }
+
+  value.substitutes.forEach((substitute, index) => validateIngredient(substitute, `${path}.substitutes[${index}]`, issues, depth + 1));
+}
+
 export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
   const issues: ValidationIssue[] = [];
 
@@ -223,29 +260,7 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
     if (!Array.isArray(recipe.ingredients) || recipe.ingredients.length < 1 || recipe.ingredients.length > 80) {
       issues.push({ path: "recipe.ingredients", message: "Must be an array with length from 1 to 80" });
     } else {
-      recipe.ingredients.forEach((ingredient, index) => {
-        const path = `recipe.ingredients[${index}]`;
-        if (!isObject(ingredient)) {
-          issues.push({ path, message: "Ingredient must be an object" });
-          return;
-        }
-        optionalString(ingredient.id, `${path}.id`, 120, issues);
-        ingredientReference(ingredient.baseIngredientId, `${path}.baseIngredientId`, issues);
-        ingredientReference(ingredient.styleIngredientId, `${path}.styleIngredientId`, issues);
-        if (!isString(ingredient.name) || ingredient.name.trim().length < 1 || ingredient.name.trim().length > 120) {
-          issues.push({ path: `${path}.name`, message: "Must be a string with trimmed length from 1 to 120" });
-        }
-        optionalString(ingredient.description, `${path}.description`, 2000, issues);
-        validateHttpUrl(ingredient.imageUrl, `${path}.imageUrl`, issues);
-        validateTags(ingredient.tags, `${path}.tags`, { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
-        if (ingredient.amount !== undefined && typeof ingredient.amount !== "number" && !isString(ingredient.amount)) {
-          issues.push({ path: `${path}.amount`, message: "Must be a number or string" });
-        }
-        optionalString(ingredient.unit, `${path}.unit`, 80, issues);
-        optionalString(ingredient.unitId, `${path}.unitId`, 80, issues);
-        optionalString(ingredient.unitName, `${path}.unitName`, 80, issues);
-        optionalString(ingredient.note, `${path}.note`, 240, issues);
-      });
+      recipe.ingredients.forEach((ingredient, index) => validateIngredient(ingredient, `recipe.ingredients[${index}]`, issues));
     }
 
     validateTags(recipe.tags, "recipe.tags", { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);

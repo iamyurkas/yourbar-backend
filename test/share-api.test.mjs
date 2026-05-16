@@ -127,6 +127,63 @@ test('payload validation accepts rich ingredient metadata', () => {
   assert.equal(result.ok, true);
 });
 
+test('payload validation accepts substitute ingredients with amount and unit metadata', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      ingredients: [
+        {
+          name: 'Lime juice',
+          amount: 30,
+          unitId: 'unit-ml',
+          unitName: 'ml',
+          substitutes: [
+            {
+              id: 'ingredient-lemon-juice',
+              baseIngredientId: [
+                { id: 'base-ingredient-lemon', name: 'Lemon', tags: [{ id: 'ingredient-tag-citrus', name: 'Citrus' }] },
+              ],
+              styleIngredientId: 'style-ingredient-lemon-juice',
+              name: 'Lemon juice',
+              amount: 25,
+              unitId: 'unit-ml',
+              unitName: 'ml',
+              description: 'Freshly squeezed lemon juice.',
+              imageUrl: 'https://api.yourbar.app/images/lemon-juice.webp',
+              tags: [{ id: 'ingredient-tag-citrus', name: 'Citrus' }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test('payload validation rejects invalid substitute ingredients', () => {
+  const result = validateRecipeSharePayloadV1({
+    ...validPayload,
+    recipe: {
+      ...validPayload.recipe,
+      ingredients: [
+        {
+          name: 'Lime juice',
+          substitutes: [
+            { name: '', amount: { value: 25 }, unitName: 12 },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].substitutes[0].name'));
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].substitutes[0].amount'));
+  assert.ok(result.issues.some((issue) => issue.path === 'recipe.ingredients[0].substitutes[0].unitName'));
+});
+
 test('payload validation accepts detailed base and style ingredient arrays', () => {
   const result = validateRecipeSharePayloadV1({
     ...validPayload,
@@ -290,7 +347,7 @@ test('landing page includes the full recipe and image when available', () => {
             imageUrl: 'https://api.yourbar.app/images/white-rum.webp',
             tags: [{ id: 'ingredient-tag-base-spirit', name: 'Base spirit' }, { id: 'ingredient-tag-liqueur', name: 'Liqueur' }],
           },
-          { name: 'Lime juice', amount: 1, unit: 'oz', note: 'fresh' },
+          { name: 'Lime juice', amount: 1, unit: 'oz', note: 'fresh', substitutes: [{ name: 'Lemon juice', amount: 0.75, unit: 'oz' }] },
           { name: 'Simple syrup', amount: 0.75, unit: 'oz' },
         ],
         method: ['Shake with ice.', 'Fine strain into the glass.'],
@@ -346,6 +403,8 @@ test('landing page includes the full recipe and image when available', () => {
   assert.match(html, /<span class="tag-chip" style="--tag-color: #64B5F6">Equal Parts<\/span>/);
   assert.match(html, /<span class="tag-chip" style="--tag-color: #F06292">Medium<\/span>/);
   assert.match(html, /<span class="tag-chip" style="--tag-color: #FF8A65">Shot<\/span>/);
+  assert.match(html, /<span class="ingredient-name">Lime juice<\/span>/);
+  assert.doesNotMatch(html, /Lemon juice/);
   assert.match(html, /<div class="store-badges">/);
   assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
   assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
@@ -689,6 +748,18 @@ test('route integration returns localized display names from recipe JSON', async
           description: 'Base spirit.',
           imageUrl: 'https://api.yourbar.app/images/rum.webp',
           tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+          substitutes: [
+            {
+              id: 'ingredient-cachaca',
+              name: 'Cachaça',
+              amount: 60,
+              unitId: 'unit-ml',
+              unitName: 'ml',
+              description: 'Sugarcane spirit substitute.',
+              imageUrl: 'https://api.yourbar.app/images/cachaca.webp',
+              tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+            },
+          ],
         },
       ],
     },
@@ -733,6 +804,18 @@ test('route integration returns localized display names from recipe JSON', async
   assert.equal(stored.payload.recipe.ingredients[0].description, 'Base spirit.');
   assert.equal(stored.payload.recipe.ingredients[0].imageUrl, 'https://api.yourbar.app/images/rum.webp');
   assert.deepEqual(stored.payload.recipe.ingredients[0].tags, [{ id: 'ingredient-tag-spirit', name: 'Spirit' }]);
+  assert.deepEqual(stored.payload.recipe.ingredients[0].substitutes, [
+    {
+      id: 'ingredient-cachaca',
+      name: 'Cachaça',
+      amount: 60,
+      unitId: 'unit-ml',
+      unitName: 'ml',
+      description: 'Sugarcane spirit substitute.',
+      imageUrl: 'https://api.yourbar.app/images/cachaca.webp',
+      tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }],
+    },
+  ]);
 });
 
 
