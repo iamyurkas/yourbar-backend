@@ -533,7 +533,7 @@ export function renderHomePage(env: Env): string {
     }
     a { color: inherit; }
     .page {
-      width: min(1180px, 100%);
+      width: min(1230px, 100%);
       min-height: 100svh;
       margin: 0 auto;
       padding: clamp(12px, 2.1vw, 24px);

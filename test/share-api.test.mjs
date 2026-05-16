@@ -199,6 +199,7 @@ test('home page presents the app logo, description, and store links', async () =
 
   assert.match(html, /<h1 id="app-title">Your Bar<\/h1>/);
   assert.match(html, /--brand-blue: #4DABF7;/);
+  assert.match(html, /width: min\(1230px, 100%\);/);
   assert.match(html, /<img src="\/assets\/images\/cocktails\.svg" alt="" aria-hidden="true">/);
   assert.match(html, /filter: brightness\(0\) invert\(1\);/);
   assert.match(html, /Your Bar helps you discover cocktails you can actually make\./);
