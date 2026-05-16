@@ -90,6 +90,51 @@
               }
             ]
           }
+        ],
+        "substitutes": [
+          {
+            "id": "ingredient-lemon-juice",
+            "name": "Lemon juice",
+            "amount": 25,
+            "unitId": "unit-ml",
+            "unitName": "ml",
+            "description": "Freshly squeezed lemon juice.",
+            "imageUrl": "https://api.yourbar.app/images/lemon-juice.webp",
+            "tags": [
+              {
+                "id": "ingredient-tag-citrus",
+                "name": "Citrus"
+              }
+            ],
+            "baseIngredientId": [
+              {
+                "id": "base-ingredient-lemon",
+                "name": "Lemon",
+                "description": "Fresh citrus that can stand in for lime.",
+                "imageUrl": "https://api.yourbar.app/images/lemon.webp",
+                "tags": [
+                  {
+                    "id": "ingredient-tag-citrus",
+                    "name": "Citrus"
+                  }
+                ]
+              }
+            ],
+            "styleIngredientId": [
+              {
+                "id": "style-ingredient-lemon-juice",
+                "name": "Fresh lemon juice",
+                "description": "Freshly squeezed lemon juice.",
+                "imageUrl": "https://api.yourbar.app/images/lemon-juice.webp",
+                "tags": [
+                  {
+                    "id": "ingredient-tag-citrus",
+                    "name": "Citrus"
+                  }
+                ]
+              }
+            ]
+          }
         ]
       },
       {
