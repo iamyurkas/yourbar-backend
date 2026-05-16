@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const assets = [
+  { route: "/assets/images/cocktails.svg", path: "assets/images/cocktails.svg", contentType: "image/svg+xml" },
   { route: "/assets/images/appstore.png", path: "assets/images/appstore.png", contentType: "image/png" },
   { route: "/assets/images/playmarket.png", path: "assets/images/playmarket.png", contentType: "image/png" },
 ];

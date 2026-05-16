@@ -474,6 +474,228 @@ async function handleGetRecipe(id: string, env: Env): Promise<Response> {
   return jsonResponse(record);
 }
 
+
+function appStoreLinks(env: Env): { iosLink: string; androidLink: string } {
+  const iosStoreUrl = env.IOS_APP_STORE_URL?.trim() || "https://apps.apple.com/app/your-bar-cocktail-recipes/id6758964503";
+  const androidStoreUrl = env.ANDROID_PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.yourbarapp.free";
+  return {
+    iosLink: `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><img src="/assets/images/appstore.png" alt="Download on the App Store" loading="lazy"></a>`,
+    androidLink: `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><img src="/assets/images/playmarket.png" alt="Get it on Google Play" loading="lazy"></a>`,
+  };
+}
+
+export function renderHomePage(env: Env): string {
+  const { iosLink, androidLink } = appStoreLinks(env);
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your Bar | Cocktail recipes you can actually make</title>
+  <meta name="description" content="Your Bar helps you discover cocktails you can actually make. Add your ingredients and instantly see available recipes.">
+  <meta property="og:title" content="Your Bar">
+  <meta property="og:description" content="Discover cocktails you can actually make with the ingredients you already have.">
+  <meta property="og:type" content="website">
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --brand-blue: #4DABF7;
+      --text: #102033;
+      --muted: #46586b;
+      --card: #ffffff;
+      --border: rgba(16, 32, 51, 0.12);
+      --shadow: rgba(17, 34, 51, 0.16);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--brand-blue); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.34), transparent 32rem),
+        linear-gradient(180deg, var(--brand-blue) 0%, #dff2ff 62%, #f7fbff 100%);
+    }
+    a { color: inherit; }
+    .page {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+      gap: 40px;
+      align-items: center;
+      min-height: calc(100vh - 96px);
+    }
+    .brand-panel {
+      display: grid;
+      justify-items: center;
+      gap: 24px;
+      color: #ffffff;
+      text-align: center;
+    }
+    .logo-tile {
+      width: clamp(132px, 20vw, 220px);
+      aspect-ratio: 1;
+      border-radius: 44px;
+      display: grid;
+      place-items: center;
+      background: var(--brand-blue);
+      box-shadow: 0 28px 68px rgba(12, 87, 145, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+    }
+    .logo-tile img {
+      width: 68%;
+      height: 68%;
+      object-fit: contain;
+      filter: brightness(0) invert(1);
+    }
+    .brand-panel h1 {
+      margin: 0;
+      font-size: clamp(3rem, 8vw, 6.75rem);
+      line-height: 0.92;
+      letter-spacing: -0.075em;
+      text-shadow: 0 16px 44px rgba(12, 87, 145, 0.34);
+    }
+    .content-card {
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 36px;
+      padding: clamp(28px, 4vw, 48px);
+      box-shadow: 0 24px 72px var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .lede {
+      margin: 0 0 22px;
+      font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+      line-height: 1.45;
+      font-weight: 750;
+      letter-spacing: -0.025em;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.72;
+    }
+    h2 {
+      margin: 30px 0 12px;
+      color: var(--text);
+      font-size: 1.04rem;
+      letter-spacing: -0.015em;
+    }
+    ul {
+      margin: 0 0 20px;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    li {
+      position: relative;
+      padding-left: 1.55rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--brand-blue);
+      font-weight: 900;
+    }
+    .query-example {
+      display: inline-block;
+      margin: 2px 0 18px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #eef7ff;
+      color: #0b5f99;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.96rem;
+    }
+    .store-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      margin-top: 28px;
+    }
+    .store-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 52px;
+      transition: transform 160ms ease, filter 160ms ease;
+    }
+    .store-badge:hover { transform: translateY(-2px); filter: brightness(0.98); }
+    .store-badge img {
+      display: block;
+      height: 52px;
+      width: auto;
+    }
+    @media (max-width: 820px) {
+      .page { padding: 28px 16px 40px; }
+      .hero { grid-template-columns: 1fr; gap: 28px; min-height: auto; }
+      .content-card { border-radius: 28px; }
+      .brand-panel h1 { font-size: clamp(3.35rem, 17vw, 5rem); }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero" aria-labelledby="app-title">
+      <div class="brand-panel">
+        <div class="logo-tile" aria-label="Your Bar app logo">
+          <img src="/assets/images/cocktails.svg" alt="" aria-hidden="true">
+        </div>
+        <h1 id="app-title">Your Bar</h1>
+      </div>
+      <article class="content-card">
+        <p class="lede">Your Bar helps you discover cocktails you can actually make.</p>
+        <p>Add the ingredients you already have and instantly see which cocktails are available. No more scrolling through recipes missing half the ingredients.</p>
+        <ul>
+          <li>Track ingredients and build your home bar</li>
+          <li>Add ingredients manually or by scanning barcodes</li>
+          <li>Discover cocktails you can make right now</li>
+          <li>See missing ingredients for each recipe</li>
+          <li>Save and rate your favorite drinks</li>
+          <li>Sort ingredients and cocktails</li>
+        </ul>
+        <h2>Plan your next party with ease:</h2>
+        <ul>
+          <li>Select cocktails for your party</li>
+          <li>Automatically add all required ingredients to your shopping list</li>
+        </ul>
+        <h2>Keep your data in sync across devices:</h2>
+        <ul>
+          <li>Securely sync your bars, ingredients, cocktails, and settings via Google Drive</li>
+        </ul>
+        <h2>Choose how recipes are displayed:</h2>
+        <p>Metric (ml), Imperial (oz), or Parts.<br>You can also set the number of servings — quantities adjust automatically.</p>
+        <h2>Search cocktails the way you think:</h2>
+        <code class="query-example">(rum OR gin) AND (campari OR aperol)</code>
+        <p>The app understands ingredient substitutions, so you’ll see drinks you can realistically make.</p>
+        <h2>More helpful features:</h2>
+        <ul>
+          <li>“One more ingredient” suggestions for your next bottle</li>
+          <li>Multiple bars for different setups</li>
+          <li>Dark mode</li>
+        </ul>
+        <p><strong>Completely free. No ads.</strong></p>
+        <div class="store-badges" aria-label="Download Your Bar">
+          ${iosLink}
+          ${androidLink}
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): string {
   const { id, payload } = record;
   const recipe = payload.recipe;
@@ -488,10 +710,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   const publicUrl = escapeHtml(urls.publicUrl);
   const deepLink = `${deepLinkScheme(env)}://import/recipe/${encodeURIComponent(id)}`;
   const escapedDeepLink = escapeHtml(deepLink);
-  const iosStoreUrl = env.IOS_APP_STORE_URL?.trim() || "https://apps.apple.com/app/your-bar-cocktail-recipes/id6758964503";
-  const androidStoreUrl = env.ANDROID_PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.yourbarapp.free";
-  const iosLink = `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><img src="/assets/images/appstore.png" alt="Download on the App Store" loading="lazy"></a>`;
-  const androidLink = `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><img src="/assets/images/playmarket.png" alt="Get it on Google Play" loading="lazy"></a>`;
+  const { iosLink, androidLink } = appStoreLinks(env);
   const imageUrl = recipe.imageUrl?.trim();
   const escapedImageUrl = imageUrl ? escapeHtml(imageUrl) : "";
   const imageMeta = escapedImageUrl ? `\n  <meta property="og:image" content="${escapedImageUrl}">\n  <meta name="twitter:card" content="summary_large_image">` : `\n  <meta name="twitter:card" content="summary">`;
@@ -1006,6 +1225,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? jsonResponse({ ok: true, service: SERVICE_NAME })
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+    } else if (path === "/") {
+      response = request.method === "GET"
+        ? htmlResponse(renderHomePage(env))
+        : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
     } else if (path.startsWith("/assets/")) {
       const assetResponse = staticAssetResponse(path);
       if (!assetResponse) {
