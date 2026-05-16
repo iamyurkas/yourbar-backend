@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateRecipeId, isValidRecipeId } from '../dist/ids.js';
 import { corsPreflight, escapeHtml, jsonError, withCors } from '../dist/http.js';
-import { handleRequest, recipeChecksum, renderRecipeLandingPage } from '../dist/index.js';
+import { handleRequest, recipeChecksum, renderHomePage, renderRecipeLandingPage } from '../dist/index.js';
 import { validateRecipeSharePayloadV1 } from '../dist/schema.js';
 
 const validPayload = {
@@ -194,6 +194,28 @@ test('id generation format is short and URL-safe', () => {
   assert.equal(isValidRecipeId(id), true);
 });
 
+test('home page presents the app logo, description, and store links', async () => {
+  const html = renderHomePage(env());
+
+  assert.match(html, /<h1 id="app-title">Your Bar<\/h1>/);
+  assert.match(html, /--brand-blue: #4DABF7;/);
+  assert.match(html, /<img src="\/assets\/images\/cocktails\.svg" alt="" aria-hidden="true">/);
+  assert.match(html, /filter: brightness\(0\) invert\(1\);/);
+  assert.match(html, /Your Bar helps you discover cocktails you can actually make\./);
+  assert.match(html, /Add the ingredients you already have and instantly see which cocktails are available\./);
+  assert.match(html, /Track ingredients and build your home bar/);
+  assert.match(html, /Add ingredients manually or by scanning barcodes/);
+  assert.match(html, /\(rum OR gin\) AND \(campari OR aperol\)/);
+  assert.match(html, /Completely free\. No ads\./);
+  assert.match(html, /<a class="store-badge" href="https:\/\/apps\.apple\.com\/app\/your-bar-cocktail-recipes\/id6758964503" aria-label="Download YourBar on the App Store"><img src="\/assets\/images\/appstore\.png" alt="Download on the App Store" loading="lazy"><\/a>/);
+  assert.match(html, /<a class="store-badge" href="https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.yourbarapp\.free" aria-label="Get YourBar on Google Play"><img src="\/assets\/images\/playmarket\.png" alt="Get it on Google Play" loading="lazy"><\/a>/);
+
+  const response = await handleRequest(new Request('https://api.yourbar.app/'), env());
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'text/html; charset=utf-8');
+  assert.match(await response.text(), /<main class="page">/);
+});
+
 test('landing page escapes recipe names', () => {
   const record = {
     id: '23456789AB',
@@ -310,7 +332,13 @@ test('landing page renders a tertiary-colored service icon link for recipe video
   assert.match(html, /<a class="video-link" href="https:\/\/www\.youtube\.com\/watch\?v=daiquiri-demo" target="_blank" rel="noopener noreferrer" aria-label="Watch cocktail video on YouTube" title="Watch on YouTube">[\s\S]*?<span>YouTube<\/span><\/a>/);
 });
 
-test('static store badge assets are served from bundled image files', async () => {
+test('static home and store badge assets are served from bundled image files', async () => {
+  const logoResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/cocktails.svg'), env());
+  assert.equal(logoResponse.status, 200);
+  assert.equal(logoResponse.headers.get('Content-Type'), 'image/svg+xml');
+  assert.equal(logoResponse.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal((await logoResponse.text()).startsWith('<svg viewBox="0 0 26 24"'), true);
+
   const appStoreResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/appstore.png'), env());
   assert.equal(appStoreResponse.status, 200);
   assert.equal(appStoreResponse.headers.get('Content-Type'), 'image/png');
