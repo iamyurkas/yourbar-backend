@@ -502,194 +502,480 @@ export function renderHomePage(env: Env): string {
       color-scheme: light;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --brand-blue: #4DABF7;
-      --text: #102033;
-      --muted: #46586b;
-      --card: #ffffff;
-      --border: rgba(16, 32, 51, 0.12);
-      --shadow: rgba(17, 34, 51, 0.16);
+      --sky: var(--brand-blue);
+      --sky-deep: #126ba8;
+      --ink: #152235;
+      --muted: #5c6977;
+      --cream: #fff7ec;
+      --card: rgba(255, 255, 255, 0.88);
+      --card-strong: rgba(255, 255, 255, 0.96);
+      --line: rgba(34, 44, 57, 0.1);
+      --shadow: rgba(39, 69, 94, 0.18);
+      --warm: #ffb866;
+      --rose: #e65c6a;
+      --mint: #4db6ac;
     }
     * { box-sizing: border-box; }
-    html { background: var(--brand-blue); }
+    html {
+      min-height: 100%;
+      background: var(--sky);
+    }
     body {
       margin: 0;
-      min-height: 100vh;
-      color: var(--text);
+      min-height: 100svh;
+      color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(255, 255, 255, 0.34), transparent 32rem),
-        linear-gradient(180deg, var(--brand-blue) 0%, #dff2ff 62%, #f7fbff 100%);
+        radial-gradient(circle at 13% 14%, rgba(255, 248, 230, 0.88), transparent 24rem),
+        radial-gradient(circle at 87% 11%, rgba(255, 184, 102, 0.46), transparent 21rem),
+        radial-gradient(circle at 78% 92%, rgba(77, 182, 172, 0.28), transparent 22rem),
+        linear-gradient(140deg, #4dabf7 0%, #dff2ff 54%, #fff7ec 100%);
+      overflow-x: hidden;
     }
     a { color: inherit; }
     .page {
-      width: min(1120px, 100%);
+      width: min(1180px, 100%);
+      min-height: 100svh;
       margin: 0 auto;
-      padding: 40px 20px 56px;
-    }
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
-      gap: 40px;
-      align-items: center;
-      min-height: calc(100vh - 96px);
-    }
-    .brand-panel {
-      display: grid;
-      justify-items: center;
-      gap: 24px;
-      color: #ffffff;
-      text-align: center;
-    }
-    .logo-tile {
-      width: clamp(132px, 20vw, 220px);
-      aspect-ratio: 1;
-      border-radius: 44px;
+      padding: clamp(12px, 2.1vw, 24px);
       display: grid;
       place-items: center;
-      background: var(--brand-blue);
-      box-shadow: 0 28px 68px rgba(12, 87, 145, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+    }
+    .app-shell {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(300px, 0.83fr) minmax(0, 1.17fr);
+      gap: clamp(12px, 1.8vw, 22px);
+      align-items: stretch;
+    }
+    .hero-card,
+    .feature-card,
+    .cta-card {
+      border: 1px solid var(--line);
+      background: var(--card);
+      box-shadow: 0 18px 54px var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .hero-card {
+      min-height: 100%;
+      border-radius: clamp(28px, 4vw, 44px);
+      padding: clamp(18px, 3.2vw, 36px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      position: relative;
+    }
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      width: 15rem;
+      height: 15rem;
+      right: -6rem;
+      bottom: -7rem;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255, 184, 102, 0.46), transparent 68%);
+      pointer-events: none;
+    }
+    .brand-lockup {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: clamp(16px, 2.4vw, 28px);
+      z-index: 1;
+    }
+    .logo-tile {
+      width: clamp(70px, 8.5vw, 104px);
+      aspect-ratio: 1;
+      flex: 0 0 auto;
+      border-radius: 28%;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, var(--sky), #2d91dd);
+      box-shadow: 0 18px 38px rgba(18, 107, 168, 0.31), inset 0 0 0 1px rgba(255, 255, 255, 0.42);
     }
     .logo-tile img {
-      width: 68%;
-      height: 68%;
+      width: 67%;
+      height: 67%;
       object-fit: contain;
       filter: brightness(0) invert(1);
     }
-    .brand-panel h1 {
+    h1 {
       margin: 0;
-      font-size: clamp(3rem, 8vw, 6.75rem);
+      font-size: clamp(2.35rem, 5vw, 4.4rem);
       line-height: 0.92;
-      letter-spacing: -0.075em;
-      text-shadow: 0 16px 44px rgba(12, 87, 145, 0.34);
+      letter-spacing: -0.08em;
     }
-    .content-card {
-      background: rgba(255, 255, 255, 0.94);
-      border: 1px solid var(--border);
-      border-radius: 36px;
-      padding: clamp(28px, 4vw, 48px);
-      box-shadow: 0 24px 72px var(--shadow);
-      backdrop-filter: blur(18px);
+    .eyebrow {
+      margin: 0 0 4px;
+      color: var(--sky-deep);
+      font-size: 0.76rem;
+      font-weight: 850;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
     .lede {
-      margin: 0 0 22px;
-      font-size: clamp(1.2rem, 2.2vw, 1.6rem);
-      line-height: 1.45;
-      font-weight: 750;
-      letter-spacing: -0.025em;
-    }
-    p {
-      margin: 0 0 18px;
-      color: var(--muted);
-      font-size: 1.02rem;
-      line-height: 1.72;
-    }
-    h2 {
-      margin: 30px 0 12px;
-      color: var(--text);
-      font-size: 1.04rem;
-      letter-spacing: -0.015em;
-    }
-    ul {
-      margin: 0 0 20px;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 10px;
-    }
-    li {
       position: relative;
-      padding-left: 1.55rem;
+      z-index: 1;
+      margin: 0;
+      font-size: clamp(1.45rem, 3vw, 2.55rem);
+      line-height: 1.02;
+      letter-spacing: -0.055em;
+      font-weight: 850;
+    }
+    .sublede {
+      position: relative;
+      z-index: 1;
+      margin: clamp(12px, 1.8vw, 18px) 0 0;
       color: var(--muted);
-      line-height: 1.55;
+      font-size: clamp(0.94rem, 1.35vw, 1.06rem);
+      line-height: 1.45;
     }
-    li::before {
-      content: "•";
-      position: absolute;
-      left: 0;
-      color: var(--brand-blue);
-      font-weight: 900;
+    .highlight-strip {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: clamp(16px, 2.4vw, 26px) 0;
     }
-    .query-example {
-      display: inline-block;
-      margin: 2px 0 18px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: #eef7ff;
-      color: #0b5f99;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 0.96rem;
+    .mini-stat {
+      min-height: 74px;
+      padding: 12px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid var(--line);
+    }
+    .mini-stat strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-size: 0.92rem;
+      letter-spacing: -0.02em;
+    }
+    .mini-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.25;
+    }
+    .cta-card {
+      position: relative;
+      z-index: 1;
+      border-radius: 26px;
+      padding: clamp(14px, 1.9vw, 20px);
+      background: var(--card-strong);
+    }
+    .free-note {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-weight: 850;
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
     }
     .store-badges {
       display: flex;
       flex-wrap: wrap;
-      gap: 14px;
+      gap: 10px;
       align-items: center;
-      margin-top: 28px;
     }
     .store-badge {
       display: inline-flex;
       align-items: center;
-      min-height: 52px;
+      min-height: 42px;
       transition: transform 160ms ease, filter 160ms ease;
     }
     .store-badge:hover { transform: translateY(-2px); filter: brightness(0.98); }
     .store-badge img {
       display: block;
-      height: 52px;
+      height: clamp(40px, 4.5vw, 48px);
       width: auto;
     }
-    @media (max-width: 820px) {
-      .page { padding: 28px 16px 40px; }
-      .hero { grid-template-columns: 1fr; gap: 28px; min-height: auto; }
-      .content-card { border-radius: 28px; }
-      .brand-panel h1 { font-size: clamp(3.35rem, 17vw, 5rem); }
+    .content-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: clamp(10px, 1.35vw, 14px);
+      align-content: stretch;
+    }
+    .feature-card {
+      border-radius: 26px;
+      padding: clamp(14px, 1.8vw, 20px);
+      background: var(--card-strong);
+    }
+    .feature-card.large { grid-column: span 3; }
+    .feature-card.medium { grid-column: span 2; }
+    .feature-card.wide { grid-column: 1 / -1; }
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      color: var(--ink);
+      font-size: clamp(0.95rem, 1.25vw, 1.08rem);
+      letter-spacing: -0.025em;
+    }
+    .icon-dot {
+      width: 26px;
+      height: 26px;
+      border-radius: 10px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: #ffffff;
+      font-size: 0.84rem;
+      background: linear-gradient(145deg, var(--rose), var(--warm));
+      box-shadow: 0 9px 18px rgba(230, 92, 106, 0.22);
+    }
+    .feature-list,
+    .chip-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .feature-list {
+      display: grid;
+      gap: 7px;
+    }
+    .feature-list li,
+    .note {
+      color: var(--muted);
+      font-size: clamp(0.78rem, 0.96vw, 0.9rem);
+      line-height: 1.32;
+    }
+    .feature-list li {
+      position: relative;
+      padding-left: 1rem;
+    }
+    .feature-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.54em;
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--sky);
+    }
+    .note { margin: 0; }
+    .query-example {
+      display: block;
+      margin: 9px 0;
+      padding: 9px 10px;
+      border-radius: 14px;
+      background: #eef7ff;
+      color: #0b5f99;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: clamp(0.72rem, 0.9vw, 0.84rem);
+      line-height: 1.25;
+      white-space: normal;
+    }
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .chip-list li {
+      border: 1px solid rgba(18, 107, 168, 0.13);
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: rgba(238, 247, 255, 0.8);
+      color: #244963;
+      font-size: clamp(0.74rem, 0.9vw, 0.84rem);
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .feature-card.accent {
+      background: linear-gradient(145deg, rgba(255, 248, 236, 0.96), rgba(255, 255, 255, 0.94));
+    }
+    @media (max-width: 900px) {
+      body { min-height: 100dvh; }
+      .page {
+        min-height: 100dvh;
+        padding: 10px;
+        align-items: start;
+      }
+      .app-shell {
+        grid-template-columns: 1fr;
+        gap: 9px;
+      }
+      .hero-card {
+        min-height: 0;
+        border-radius: 28px;
+        padding: 14px;
+      }
+      .brand-lockup {
+        margin-bottom: 8px;
+        gap: 10px;
+      }
+      .logo-tile { width: 58px; }
+      h1 { font-size: clamp(2.35rem, 13vw, 3.25rem); }
+      .eyebrow { font-size: 0.66rem; }
+      .lede { font-size: clamp(1.25rem, 5.8vw, 1.85rem); }
+      .sublede {
+        margin-top: 8px;
+        font-size: 0.88rem;
+        line-height: 1.32;
+      }
+      .highlight-strip {
+        display: none;
+      }
+      .cta-card {
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 20px;
+      }
+      .free-note {
+        margin-bottom: 8px;
+        font-size: 0.92rem;
+      }
+      .store-badges { gap: 8px; }
+      .store-badge { min-height: 34px; }
+      .store-badge img { height: 36px; }
+      .content-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .feature-card,
+      .feature-card.large,
+      .feature-card.medium,
+      .feature-card.wide {
+        grid-column: auto;
+        border-radius: 18px;
+        padding: 10px;
+      }
+      .feature-card.core,
+      .feature-card.wide {
+        grid-column: 1 / -1;
+      }
+      .card-title {
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+      }
+      .icon-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 8px;
+        font-size: 0.72rem;
+      }
+      .feature-list { gap: 4px; }
+      .feature-list li,
+      .note {
+        font-size: 0.72rem;
+        line-height: 1.22;
+      }
+      .chip-list { gap: 5px; }
+      .chip-list li {
+        padding: 5px 7px;
+        font-size: 0.68rem;
+      }
+      .query-example {
+        margin: 6px 0;
+        padding: 7px;
+        font-size: 0.65rem;
+      }
+    }
+    @media (max-width: 420px) {
+      .page { padding: 8px; }
+      .sublede { font-size: 0.82rem; }
+      .store-badge img { height: 32px; }
+      .feature-card:not(.core):not(.wide) .feature-list li:nth-child(n + 3) { display: none; }
+      .chip-list li { font-size: 0.64rem; }
+    }
+    @media (max-height: 740px) and (min-width: 901px) {
+      .page { padding-block: 12px; }
+      .hero-card { padding: 22px; }
+      .brand-lockup { margin-bottom: 16px; }
+      .highlight-strip { margin: 18px 0; }
+      .mini-stat { min-height: 64px; padding: 10px; }
+      .feature-card { padding: 14px; }
+      .feature-list { gap: 5px; }
+      .feature-list li,
+      .note { line-height: 1.22; }
+      .query-example { margin: 7px 0; padding: 8px 10px; }
+      .store-badge img { height: 42px; }
     }
   </style>
 </head>
 <body>
   <main class="page">
-    <section class="hero" aria-labelledby="app-title">
-      <div class="brand-panel">
-        <div class="logo-tile" aria-label="Your Bar app logo">
-          <img src="/assets/images/cocktails.svg" alt="" aria-hidden="true">
+    <section class="app-shell" aria-labelledby="app-title">
+      <article class="hero-card">
+        <div>
+          <div class="brand-lockup">
+            <div class="logo-tile" aria-label="Your Bar app logo">
+              <img src="/assets/images/cocktails.svg" alt="" aria-hidden="true">
+            </div>
+            <div>
+              <p class="eyebrow">Cocktail companion</p>
+              <h1 id="app-title">Your Bar</h1>
+            </div>
+          </div>
+          <p class="lede">Your Bar helps you discover cocktails you can actually make.</p>
+          <p class="sublede">Add the ingredients you already have and instantly see which cocktails are available. No more scrolling through recipes missing half the ingredients.</p>
+          <div class="highlight-strip" aria-label="Your Bar highlights">
+            <div class="mini-stat"><strong>Home bar tracking</strong><span>Track ingredients and build your home bar.</span></div>
+            <div class="mini-stat"><strong>Barcode scanning</strong><span>Add ingredients manually or by scanning barcodes.</span></div>
+            <div class="mini-stat"><strong>Make it now</strong><span>Discover cocktails you can make right now.</span></div>
+            <div class="mini-stat"><strong>Missing ingredients</strong><span>See missing ingredients for each recipe.</span></div>
+          </div>
         </div>
-        <h1 id="app-title">Your Bar</h1>
-      </div>
-      <article class="content-card">
-        <p class="lede">Your Bar helps you discover cocktails you can actually make.</p>
-        <p>Add the ingredients you already have and instantly see which cocktails are available. No more scrolling through recipes missing half the ingredients.</p>
-        <ul>
-          <li>Track ingredients and build your home bar</li>
-          <li>Add ingredients manually or by scanning barcodes</li>
-          <li>Discover cocktails you can make right now</li>
-          <li>See missing ingredients for each recipe</li>
-          <li>Save and rate your favorite drinks</li>
-          <li>Sort ingredients and cocktails</li>
-        </ul>
-        <h2>Plan your next party with ease:</h2>
-        <ul>
-          <li>Select cocktails for your party</li>
-          <li>Automatically add all required ingredients to your shopping list</li>
-        </ul>
-        <h2>Keep your data in sync across devices:</h2>
-        <ul>
-          <li>Securely sync your bars, ingredients, cocktails, and settings via Google Drive</li>
-        </ul>
-        <h2>Choose how recipes are displayed:</h2>
-        <p>Metric (ml), Imperial (oz), or Parts.<br>You can also set the number of servings — quantities adjust automatically.</p>
-        <h2>Search cocktails the way you think:</h2>
-        <code class="query-example">(rum OR gin) AND (campari OR aperol)</code>
-        <p>The app understands ingredient substitutions, so you’ll see drinks you can realistically make.</p>
-        <h2>More helpful features:</h2>
-        <ul>
-          <li>“One more ingredient” suggestions for your next bottle</li>
-          <li>Multiple bars for different setups</li>
-          <li>Dark mode</li>
-        </ul>
-        <p><strong>Completely free. No ads.</strong></p>
-        <div class="store-badges" aria-label="Download Your Bar">
-          ${iosLink}
-          ${androidLink}
+        <div class="cta-card" aria-label="Download Your Bar">
+          <p class="free-note">Completely free. No ads.</p>
+          <div class="store-badges">
+            ${iosLink}
+            ${androidLink}
+          </div>
         </div>
       </article>
+      <div class="content-grid" aria-label="Your Bar features">
+        <section class="feature-card large core">
+          <h2 class="card-title"><span class="icon-dot">🍸</span> Build your bar</h2>
+          <ul class="feature-list">
+            <li>Track ingredients and build your home bar</li>
+            <li>Add ingredients manually or by scanning barcodes</li>
+            <li>Discover cocktails you can make right now</li>
+            <li>See missing ingredients for each recipe</li>
+          </ul>
+        </section>
+        <section class="feature-card large">
+          <h2 class="card-title"><span class="icon-dot">⭐</span> Save your taste</h2>
+          <ul class="feature-list">
+            <li>Save and rate your favorite drinks</li>
+            <li>Sort ingredients and cocktails</li>
+            <li>Multiple bars for different setups</li>
+            <li>Dark mode</li>
+          </ul>
+        </section>
+        <section class="feature-card medium accent">
+          <h2 class="card-title"><span class="icon-dot">🛒</span> Plan your next party with ease:</h2>
+          <ul class="feature-list">
+            <li>Select cocktails for your party</li>
+            <li>Automatically add all required ingredients to your shopping list</li>
+          </ul>
+        </section>
+        <section class="feature-card medium">
+          <h2 class="card-title"><span class="icon-dot">☁️</span> Keep your data in sync across devices:</h2>
+          <p class="note">Securely sync your bars, ingredients, cocktails, and settings via Google Drive</p>
+        </section>
+        <section class="feature-card medium">
+          <h2 class="card-title"><span class="icon-dot">⚖️</span> Choose how recipes are displayed:</h2>
+          <p class="note">Metric (ml), Imperial (oz), or Parts. You can also set the number of servings — quantities adjust automatically.</p>
+        </section>
+        <section class="feature-card wide">
+          <h2 class="card-title"><span class="icon-dot">🔎</span> Search cocktails the way you think:</h2>
+          <code class="query-example">(rum OR gin) AND (campari OR aperol)</code>
+          <p class="note">The app understands ingredient substitutions, so you’ll see drinks you can realistically make.</p>
+        </section>
+        <section class="feature-card wide">
+          <h2 class="card-title"><span class="icon-dot">✨</span> More helpful features:</h2>
+          <ul class="chip-list">
+            <li>“One more ingredient” suggestions for your next bottle</li>
+            <li>Multiple bars for different setups</li>
+            <li>Dark mode</li>
+            <li>Completely free. No ads.</li>
+          </ul>
+        </section>
+      </div>
     </section>
   </main>
 </body>
