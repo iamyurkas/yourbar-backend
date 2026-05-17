@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateRecipeId, isValidRecipeId } from '../dist/ids.js';
 import { corsPreflight, escapeHtml, jsonError, withCors } from '../dist/http.js';
-import { handleRequest, recipeChecksum, renderHomePage, renderRecipeLandingPage } from '../dist/index.js';
+import { handleRequest, recipeChecksum, renderHomePage, renderRecipeLandingPage, scheduled } from '../dist/index.js';
 import { validateRecipeSharePayloadV1 } from '../dist/schema.js';
 
 const validPayload = {
@@ -23,10 +23,13 @@ class MockKV {
   async get(key, type) {
     const value = this.values.get(key);
     if (value === undefined) return null;
-    return type === 'json' ? JSON.parse(value) : value;
+    return type === 'json' ? JSON.parse(value.value) : value.value;
   }
-  async put(key, value) {
-    this.values.set(key, value);
+  async put(key, value, options = {}) {
+    this.values.set(key, { value, expirationTtl: options.expirationTtl });
+  }
+  async delete(key) {
+    this.values.delete(key);
   }
 }
 
@@ -48,9 +51,19 @@ class MockR2 {
     return {
       body: value.body,
       httpEtag: value.httpEtag,
+      customMetadata: value.customMetadata,
       writeHttpMetadata(headers) {
         if (value.contentType) headers.set('Content-Type', value.contentType);
       },
+    };
+  }
+  async delete(key) {
+    this.values.delete(key);
+  }
+  async list() {
+    return {
+      objects: [...this.values.entries()].map(([key, value]) => ({ key, customMetadata: value.customMetadata })),
+      truncated: false,
     };
   }
 }
@@ -708,6 +721,29 @@ test('route integration creates and retrieves a recipe share using mocked KV', a
   assert.equal(stored.payload.recipe.name, 'Daiquiri');
 });
 
+
+test('recipe reads refresh the 30-day retention window in KV', async () => {
+  const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
+  const create = await handleRequest(new Request('https://api.yourbar.app/api/recipes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(validPayload),
+  }), bindings);
+  const created = await create.json();
+  const originalRecord = await bindings.RECIPE_SHARES.get(`recipe:${created.id}`, 'json');
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const get = await handleRequest(new Request(created.apiUrl), bindings);
+
+  assert.equal(get.status, 200);
+  const refreshed = await get.json();
+  assert.equal(refreshed.id, created.id);
+  assert.ok(Date.parse(refreshed.lastAccessedAt) >= Date.parse(originalRecord.lastAccessedAt));
+  assert.ok(Date.parse(refreshed.expiresAt) >= Date.parse(originalRecord.expiresAt));
+  assert.equal(bindings.RECIPE_SHARES.values.get(`recipe:${created.id}`).expirationTtl, 60);
+  assert.equal(bindings.RECIPE_SHARES.values.get(`recipe-checksum:${created.recipeChecksum}`).expirationTtl, 60);
+});
+
 test('route integration returns localized display names from recipe JSON', async () => {
   const bindings = env({ DEFAULT_RECIPE_TTL_SECONDS: '60' });
   const payload = {
@@ -871,7 +907,7 @@ test('route integration uploads and serves a recipe image using mocked R2', asyn
   const image = await handleRequest(new Request(uploaded.imageUrl), bindings);
   assert.equal(image.status, 200);
   assert.equal(image.headers.get('Content-Type'), 'image/webp');
-  assert.equal(image.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal(image.headers.get('Cache-Control'), 'public, no-cache');
   assert.deepEqual(new Uint8Array(await image.arrayBuffer()), new Uint8Array([1, 2, 3, 4]));
 });
 
@@ -904,9 +940,28 @@ test('image upload reuses an existing image with the same bytes', async () => {
   assert.equal(duplicate.key, created.key);
   assert.equal(duplicate.imageUrl, created.imageUrl);
   assert.equal(duplicate.imageChecksum, created.imageChecksum);
-  assert.equal(bucket.putCount, 1);
+  assert.equal(bucket.values.size, 1);
+  assert.equal(bucket.putCount, 2);
 });
 
+
+
+test('scheduled cleanup removes images after their retention window expires', async () => {
+  const bucket = new MockR2();
+  const bindings = env({ RECIPE_IMAGES: bucket });
+  await bucket.put('expired.webp', new Uint8Array([1, 2, 3]).buffer, {
+    httpMetadata: { contentType: 'image/webp' },
+    customMetadata: { imageChecksum: 'abc123', expiresAt: new Date(Date.now() - 1_000).toISOString() },
+  });
+  await bindings.RECIPE_SHARES.put('image-access:expired.webp', '1', { expirationTtl: 60 });
+  await bindings.RECIPE_SHARES.put('image-checksum:abc123', 'expired.webp', { expirationTtl: 60 });
+
+  await scheduled({}, bindings);
+
+  assert.equal(bucket.values.has('expired.webp'), false);
+  assert.equal(await bindings.RECIPE_SHARES.get('image-access:expired.webp'), null);
+  assert.equal(await bindings.RECIPE_SHARES.get('image-checksum:abc123'), null);
+});
 test('image upload rejects unsupported content types', async () => {
   const bindings = env({ RECIPE_IMAGES: new MockR2() });
   const form = new FormData();

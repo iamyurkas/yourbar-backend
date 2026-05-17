@@ -1,22 +1,42 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
-import { getImageKeyByChecksum, getRecipeIdByChecksum, getRecipeShare, putImageKeyByChecksum, putRecipeShare, type RecipeShareRecord } from "./storage.js";
+import {
+  deleteImageAccessRecords,
+  getImageAccessMarker,
+  getImageKeyByChecksum,
+  getRecipeIdByChecksum,
+  getRecipeShare,
+  putImageAccessMarker,
+  putImageKeyByChecksum,
+  putRecipeShare,
+  refreshRecipeShare,
+  type RecipeShareKV,
+  type RecipeShareRecord,
+} from "./storage.js";
 import { staticAssetResponse } from "./static-assets.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
   body: BodyInit;
   httpEtag: string;
+  customMetadata?: Record<string, string>;
   writeHttpMetadata(headers: Headers): void;
+};
+
+type RecipeImageListObject = {
+  key: string;
+  customMetadata?: Record<string, string>;
 };
 
 type RecipeImageBucket = {
   get(key: string): Promise<RecipeImageObject | null>;
   put(key: string, value: ArrayBuffer, options?: { httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
+  delete(key: string): Promise<unknown>;
+  list(options?: { limit?: number; cursor?: string; include?: string[] }): Promise<{ objects: RecipeImageListObject[]; cursor?: string; truncated?: boolean }>;
 };
 
 export interface Env {
-  RECIPE_SHARES: KVNamespace;
+  RECIPE_SHARES: RecipeShareKV;
   RECIPE_IMAGES?: RecipeImageBucket;
   PUBLIC_BASE_URL?: string;
   APP_DEEP_LINK_SCHEME?: string;
@@ -25,6 +45,7 @@ export interface Env {
   MAX_IMAGE_BYTES?: string;
   IMAGE_PUBLIC_BASE_URL?: string;
   CORS_ALLOWED_ORIGINS?: string;
+  IMAGE_CLEANUP_BATCH_SIZE?: string;
   IOS_APP_STORE_URL?: string;
   ANDROID_PLAY_STORE_URL?: string;
   IOS_APP_IDS?: string;
@@ -116,6 +137,23 @@ function envNumber(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function recipeTtlSeconds(env: Env): number {
+  return envNumber(env.DEFAULT_RECIPE_TTL_SECONDS, 2_592_000);
+}
+
+function retentionTimestamps(ttlSeconds: number, now = Date.now()): { lastAccessedAt: string; expiresAt: string } {
+  return {
+    lastAccessedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + ttlSeconds * 1000).toISOString(),
+  };
+}
+
+function isExpiredIso(value: string | undefined, now = Date.now()): boolean {
+  if (!value) return false;
+  const expiresAt = Date.parse(value);
+  return Number.isFinite(expiresAt) && expiresAt <= now;
 }
 
 function publicBaseUrl(env: Env): string {
@@ -352,6 +390,28 @@ function renderRecipeDetails(recipe: RecipeSharePayloadV1["recipe"]): string {
   return details.length > 0 ? `<section><h2>Details</h2><dl>${details.join("")}</dl></section>` : "";
 }
 
+async function updateStoredImageRetention(env: Env, key: string, object: RecipeImageObject, ttlSeconds: number, now = Date.now()): Promise<ArrayBuffer> {
+  const bytes = await new Response(object.body).arrayBuffer();
+  const timestamps = retentionTimestamps(ttlSeconds, now);
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  const contentType = headers.get("Content-Type") ?? undefined;
+  const putOptions: { httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> } = {
+    customMetadata: { ...(object.customMetadata ?? {}), ...timestamps },
+  };
+  if (contentType) putOptions.httpMetadata = { contentType };
+  await env.RECIPE_IMAGES?.put(key, bytes, putOptions);
+  await putImageAccessMarker(env.RECIPE_SHARES, key, ttlSeconds);
+  const checksum = object.customMetadata?.imageChecksum;
+  if (checksum) await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key, ttlSeconds);
+  return bytes;
+}
+
+async function deleteExpiredImage(env: Env, key: string, checksum?: string): Promise<void> {
+  await env.RECIPE_IMAGES?.delete(key);
+  await deleteImageAccessRecords(env.RECIPE_SHARES, key, checksum);
+}
+
 async function handlePostImage(request: Request, env: Env): Promise<Response> {
   if (!env.RECIPE_IMAGES) {
     return jsonError("storage_not_configured", "Image storage is not configured", 503);
@@ -396,29 +456,33 @@ async function handlePostImage(request: Request, env: Env): Promise<Response> {
     return jsonError("payload_too_large", `Image must be ${maxBytes} bytes or smaller`, 413);
   }
 
+  const ttlSeconds = recipeTtlSeconds(env);
+  const timestamps = retentionTimestamps(ttlSeconds);
   const checksum = await sha256Hex(bytes);
   const mappedKey = await getImageKeyByChecksum(env.RECIPE_SHARES, checksum);
   if (mappedKey) {
     const existing = await env.RECIPE_IMAGES.get(mappedKey);
     if (existing) {
-      return jsonResponse({ key: mappedKey, imageUrl: `${imagePublicBaseUrl(env)}/${mappedKey}`, imageChecksum: checksum, duplicate: true }, 200);
+      await updateStoredImageRetention(env, mappedKey, existing, ttlSeconds);
+      return jsonResponse({ key: mappedKey, imageUrl: `${imagePublicBaseUrl(env)}/${mappedKey}`, imageChecksum: checksum, duplicate: true, expiresAt: timestamps.expiresAt }, 200);
     }
   }
 
   const key = imageObjectKeyFromChecksum(checksum, image.type);
   const existing = await env.RECIPE_IMAGES.get(key);
   if (existing) {
-    await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key);
-    return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: true }, 200);
+    await updateStoredImageRetention(env, key, existing, ttlSeconds);
+    return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: true, expiresAt: timestamps.expiresAt }, 200);
   }
 
   await env.RECIPE_IMAGES.put(key, bytes, {
     httpMetadata: { contentType: image.type },
-    customMetadata: { originalName: image.name.slice(0, 256), imageChecksum: checksum },
+    customMetadata: { originalName: image.name.slice(0, 256), imageChecksum: checksum, ...timestamps },
   });
-  await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key);
+  await putImageKeyByChecksum(env.RECIPE_SHARES, checksum, key, ttlSeconds);
+  await putImageAccessMarker(env.RECIPE_SHARES, key, ttlSeconds);
 
-  return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: false }, 201);
+  return jsonResponse({ key, imageUrl: `${imagePublicBaseUrl(env)}/${key}`, imageChecksum: checksum, duplicate: false, expiresAt: timestamps.expiresAt }, 201);
 }
 
 async function handleGetImage(key: string, env: Env): Promise<Response> {
@@ -433,13 +497,23 @@ async function handleGetImage(key: string, env: Env): Promise<Response> {
   const object = await env.RECIPE_IMAGES.get(key);
   if (!object) return jsonError("not_found", "Image was not found", 404);
 
+  const checksum = object.customMetadata?.imageChecksum;
+  const expiresAt = object.customMetadata?.expiresAt;
+  if (isExpiredIso(expiresAt) || (expiresAt && !(await getImageAccessMarker(env.RECIPE_SHARES, key)))) {
+    await deleteExpiredImage(env, key, checksum);
+    return jsonError("not_found", "Image was not found", 404);
+  }
+
+  const ttlSeconds = recipeTtlSeconds(env);
+  const bytes = await updateStoredImageRetention(env, key, object, ttlSeconds);
+  const refreshedObject = await env.RECIPE_IMAGES.get(key);
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  (refreshedObject ?? object).writeHttpMetadata(headers);
+  headers.set("etag", (refreshedObject ?? object).httpEtag);
+  headers.set("Cache-Control", "public, no-cache");
   headers.set("X-Content-Type-Options", "nosniff");
 
-  return new Response(object.body, { headers });
+  return new Response(bytes, { headers });
 }
 
 async function handlePostRecipe(request: Request, env: Env): Promise<Response> {
@@ -457,41 +531,44 @@ async function handlePostRecipe(request: Request, env: Env): Promise<Response> {
   }
 
   const checksum = await recipeChecksum(validation.value.recipe);
+  const ttlSeconds = recipeTtlSeconds(env);
   const existingId = await getRecipeIdByChecksum(env.RECIPE_SHARES, checksum);
   if (existingId) {
     const existingRecord = await getRecipeShare(env.RECIPE_SHARES, existingId);
     if (existingRecord) {
+      const refreshedRecord = await refreshRecipeShare(env.RECIPE_SHARES, existingRecord, ttlSeconds);
       return jsonResponse({
-        id: existingRecord.id,
-        ...recipeUrls(env, existingRecord.id),
-        expiresAt: existingRecord.expiresAt,
-        recipeChecksum: existingRecord.recipeChecksum,
+        id: refreshedRecord.id,
+        ...recipeUrls(env, refreshedRecord.id),
+        expiresAt: refreshedRecord.expiresAt,
+        recipeChecksum: refreshedRecord.recipeChecksum,
         duplicate: true,
       }, 200);
     }
   }
 
-  const ttlSeconds = envNumber(env.DEFAULT_RECIPE_TTL_SECONDS, 2_592_000);
   const now = Date.now();
   const id = generateRecipeId();
-  const expiresAt = new Date(now + ttlSeconds * 1000).toISOString();
+  const timestamps = retentionTimestamps(ttlSeconds, now);
   const record: RecipeShareRecord = {
     id,
     payload: validation.value,
-    createdAt: new Date(now).toISOString(),
-    expiresAt,
+    createdAt: timestamps.lastAccessedAt,
+    lastAccessedAt: timestamps.lastAccessedAt,
+    expiresAt: timestamps.expiresAt,
     recipeChecksum: checksum,
   };
 
   await putRecipeShare(env.RECIPE_SHARES, record, ttlSeconds);
-  return jsonResponse({ id, ...recipeUrls(env, id), expiresAt, recipeChecksum: checksum, duplicate: false }, 201);
+  return jsonResponse({ id, ...recipeUrls(env, id), expiresAt: timestamps.expiresAt, recipeChecksum: checksum, duplicate: false }, 201);
 }
 
 async function handleGetRecipe(id: string, env: Env): Promise<Response> {
   if (!isValidRecipeId(id)) return jsonError("bad_request", "Invalid recipe id", 400);
   const record = await getRecipeShare(env.RECIPE_SHARES, id);
   if (!record) return jsonError("not_found", "Recipe share was not found", 404);
-  return jsonResponse(record);
+  const refreshedRecord = await refreshRecipeShare(env.RECIPE_SHARES, record, recipeTtlSeconds(env));
+  return jsonResponse(refreshedRecord);
 }
 
 
@@ -1469,7 +1546,8 @@ async function handleRecipeLanding(id: string, env: Env): Promise<Response> {
   if (!isValidRecipeId(id)) return htmlResponse(renderNotFoundPage(), 404);
   const record = await getRecipeShare(env.RECIPE_SHARES, id);
   if (!record) return htmlResponse(renderNotFoundPage(), 404);
-  return htmlResponse(renderRecipeLandingPage(record, env));
+  const refreshedRecord = await refreshRecipeShare(env.RECIPE_SHARES, record, recipeTtlSeconds(env));
+  return htmlResponse(renderRecipeLandingPage(refreshedRecord, env));
 }
 
 function commaSeparatedValues(value: string | undefined): string[] {
@@ -1589,6 +1667,23 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 }
 
+
+export async function scheduled(_controller: unknown, env: Env): Promise<void> {
+  if (!env.RECIPE_IMAGES) return;
+
+  const limit = Math.min(envNumber(env.IMAGE_CLEANUP_BATCH_SIZE, 100), 1_000);
+  let cursor: string | undefined;
+  do {
+    const listOptions = cursor ? { limit, cursor, include: ["customMetadata"] } : { limit, include: ["customMetadata"] };
+    const page = await env.RECIPE_IMAGES.list(listOptions);
+    await Promise.all(page.objects
+      .filter((object) => isExpiredIso(object.customMetadata?.expiresAt))
+      .map((object) => deleteExpiredImage(env, object.key, object.customMetadata?.imageChecksum)));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+}
+
 export default {
   fetch: handleRequest,
+  scheduled,
 };
