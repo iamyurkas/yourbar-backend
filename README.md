@@ -75,6 +75,14 @@ preview_bucket_name = "yourbar-recipe-images-preview"
 
 By default, uploaded images are served back through this Worker at `${PUBLIC_BASE_URL}/images/{key}`. If you put R2 behind a CDN or custom public domain, set `IMAGE_PUBLIC_BASE_URL` to that image base URL.
 
+After enabling R2 and creating the buckets, deploy the Worker so the new `/api/images` route and `RECIPE_IMAGES` binding are available in production:
+
+```bash
+npm run deploy
+```
+
+If `POST https://api.yourbar.app/api/images` returns `404 {"error":{"code":"not_found"...}}`, the production Worker does not have the image route yet or the custom domain is still routed to an older Worker deployment. Run `npm run deploy`, then confirm the deployed Worker is attached to `api.yourbar.app` in the Cloudflare Workers Routes/Custom Domains settings.
+
 ## Configuration
 
 Set non-secret variables in `wrangler.toml` or Cloudflare dashboard environment variables:
@@ -129,6 +137,21 @@ Upload images separately from recipe JSON. The form field name must be `image`, 
 curl -i -X POST http://localhost:8787/api/images \
   -F 'image=@./daiquiri.webp;type=image/webp'
 ```
+
+In Windows PowerShell, `curl` is an alias for `Invoke-WebRequest`, which does not support curl's `-F` syntax. Use `curl.exe` explicitly, and use PowerShell's backtick for line continuation:
+
+```powershell
+curl.exe -i -X POST https://api.yourbar.app/api/images `
+  -F "image=@./daiquiri.webp;type=image/webp"
+```
+
+Or run it on one line:
+
+```powershell
+curl.exe -i -X POST https://api.yourbar.app/api/images -F "image=@./daiquiri.webp;type=image/webp"
+```
+
+The `@./daiquiri.webp` path must point to a real file relative to your current terminal directory. If `curl.exe` prints `curl: (26) Failed to open/read local data from file/application`, confirm the file exists with `Test-Path .\daiquiri.webp` or pass an absolute path, for example `-F "image=@C:\projects\yourbar-backend\daiquiri.webp;type=image/webp"`.
 
 Response:
 
