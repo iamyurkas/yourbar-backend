@@ -304,6 +304,16 @@ test('id generation format is short and URL-safe', () => {
 test('home page presents the app logo, description, and store links', async () => {
   const html = renderHomePage(env());
 
+  assert.match(html, /<title>Your Bar Cocktail App \| Home Bar &amp; Recipe Finder<\/title>/);
+  assert.match(html, /<meta name="description" content="Your Bar is a free cocktail app for tracking your home bar, finding recipes you can make, planning parties, and sharing drinks with friends\.">/);
+  assert.match(html, /<meta name="robots" content="index, follow, max-image-preview:large">/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/api\.yourbar\.app\/">/);
+  assert.match(html, /<meta property="og:url" content="https:\/\/api\.yourbar\.app\/">/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/assets\/images\/cocktails\.svg">/);
+  assert.match(html, /<meta name="twitter:card" content="summary">/);
+  assert.match(html, /<script type="application\/ld\+json">\{"@context":"https:\/\/schema\.org","@graph":/);
+  assert.match(html, /"@type":"MobileApplication"/);
+  assert.match(html, /"featureList":\["Track home bar ingredients","Discover cocktails you can make now"/);
   assert.match(html, /<h1 id="app-title">Your Bar<\/h1>/);
   assert.match(html, /--brand-blue: #4DABF7;/);
   assert.match(html, /width: min\(1230px, 100%\);/);

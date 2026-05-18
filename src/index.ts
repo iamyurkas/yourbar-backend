@@ -572,28 +572,88 @@ async function handleGetRecipe(id: string, env: Env): Promise<Response> {
 }
 
 
-function appStoreLinks(env: Env): { iosLink: string; androidLink: string } {
+function appStoreLinks(env: Env): { iosLink: string; androidLink: string; iosStoreUrl: string; androidStoreUrl: string } {
   const iosStoreUrl = env.IOS_APP_STORE_URL?.trim() || "https://apps.apple.com/app/your-bar-cocktail-recipes/id6758964503";
   const androidStoreUrl = env.ANDROID_PLAY_STORE_URL?.trim() || "https://play.google.com/store/apps/details?id=com.yourbarapp.free";
   return {
+    iosStoreUrl,
+    androidStoreUrl,
     iosLink: `<a class="store-badge" href="${escapeHtml(iosStoreUrl)}" aria-label="Download YourBar on the App Store"><img src="/assets/images/appstore.png" alt="Download on the App Store" loading="lazy"></a>`,
     androidLink: `<a class="store-badge" href="${escapeHtml(androidStoreUrl)}" aria-label="Get YourBar on Google Play"><img src="/assets/images/playmarket.png" alt="Get it on Google Play" loading="lazy"></a>`,
   };
 }
 
+function safeJsonLd(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 export function renderHomePage(env: Env): string {
-  const { iosLink, androidLink } = appStoreLinks(env);
+  const { iosLink, androidLink, iosStoreUrl, androidStoreUrl } = appStoreLinks(env);
+  const baseUrl = publicBaseUrl(env);
+  const homeUrl = `${baseUrl}/`;
+  const appIconUrl = `${baseUrl}/assets/images/cocktails.svg`;
+  const title = "Your Bar Cocktail App | Home Bar & Recipe Finder";
+  const description = "Your Bar is a free cocktail app for tracking your home bar, finding recipes you can make, planning parties, and sharing drinks with friends.";
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        name: "Your Bar",
+        alternateName: "YourBar",
+        url: homeUrl,
+        description,
+        inLanguage: "en",
+      },
+      {
+        "@type": "MobileApplication",
+        name: "Your Bar",
+        alternateName: "YourBar",
+        operatingSystem: "iOS, Android",
+        applicationCategory: "LifestyleApplication",
+        description,
+        url: homeUrl,
+        image: appIconUrl,
+        downloadUrl: [iosStoreUrl, androidStoreUrl],
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "USD",
+        },
+        featureList: [
+          "Track home bar ingredients",
+          "Discover cocktails you can make now",
+          "Scan barcodes to add ingredients",
+          "Plan parties with automatic shopping lists",
+          "Share cocktail recipes with public links",
+        ],
+      },
+    ],
+  };
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Your Bar | Cocktail recipes you can actually make</title>
-  <meta name="description" content="Track your home bar, discover cocktails you can make, plan parties, and share recipes with friends.">
-  <meta property="og:title" content="Your Bar">
-  <meta property="og:description" content="Track your home bar, discover cocktails you can make, plan parties, and share recipes with friends.">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="application-name" content="Your Bar">
+  <meta name="apple-itunes-app" content="app-id=6758964503">
+  <link rel="canonical" href="${escapeHtml(homeUrl)}">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="website">
+  <meta property="og:url" content="${escapeHtml(homeUrl)}">
+  <meta property="og:site_name" content="Your Bar">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="${escapeHtml(appIconUrl)}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${escapeHtml(appIconUrl)}">
+  <script type="application/ld+json">${safeJsonLd(structuredData)}</script>
   <style>
     :root {
       color-scheme: light;
