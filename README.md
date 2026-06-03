@@ -419,12 +419,12 @@ ANDROID_PACKAGE_NAME = "app.yourbar"
 ANDROID_SHA256_CERT_FINGERPRINTS = "AA:BB:CC:..."
 ```
 
-The generated document delegates URL handling for `https://api.yourbar.app/r/*` to the configured Android app:
+The generated document delegates URL handling for `https://api.yourbar.app/r/*` and shared login credentials to the configured Android app:
 
 ```json
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
     "target": {
       "namespace": "android_app",
       "package_name": "app.yourbar",

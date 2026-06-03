@@ -688,7 +688,7 @@ test('well-known android asset links are generated from package and signing fing
   assert.equal(response.headers.get('Content-Type'), 'application/json; charset=utf-8');
   assert.deepEqual(await response.json(), [
     {
-      relation: ['delegate_permission/common.handle_all_urls'],
+      relation: ['delegate_permission/common.handle_all_urls', 'delegate_permission/common.get_login_creds'],
       target: {
         namespace: 'android_app',
         package_name: 'app.yourbar',
