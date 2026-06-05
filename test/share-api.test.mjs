@@ -308,6 +308,9 @@ test('home page presents the app logo, description, and store links', async () =
   assert.match(html, /<meta name="description" content="Your Bar is a free cocktail app for tracking your home bar, finding recipes you can make, planning parties, and sharing drinks with friends\.">/);
   assert.match(html, /<meta name="robots" content="index, follow, max-image-preview:large">/);
   assert.match(html, /<link rel="canonical" href="https:\/\/api\.yourbar\.app\/">/);
+  assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="any">/);
+  assert.match(html, /<link rel="icon" type="image\/png" sizes="32x32" href="\/assets\/images\/favicon\/favicon-32x32\.png">/);
+  assert.match(html, /<link rel="apple-touch-icon" sizes="180x180" href="\/assets\/images\/favicon\/apple-icon-180x180\.png">/);
   assert.match(html, /<meta property="og:url" content="https:\/\/api\.yourbar\.app\/">/);
   assert.match(html, /<meta property="og:image" content="https:\/\/api\.yourbar\.app\/assets\/images\/cocktails\.svg">/);
   assert.match(html, /<meta name="twitter:card" content="summary">/);
@@ -456,7 +459,23 @@ test('landing page renders a tertiary-colored service icon link for recipe video
   assert.match(html, /<a class="video-link" href="https:\/\/www\.youtube\.com\/watch\?v=daiquiri-demo" target="_blank" rel="noopener noreferrer" aria-label="Watch cocktail video on YouTube" title="Watch on YouTube">[\s\S]*?<span>YouTube<\/span><\/a>/);
 });
 
-test('static home and store badge assets are served from bundled image files', async () => {
+test('static favicon, home, and store badge assets are served from bundled image files', async () => {
+  const faviconResponse = await handleRequest(new Request('https://api.yourbar.app/favicon.ico'), env());
+  assert.equal(faviconResponse.status, 200);
+  assert.equal(faviconResponse.headers.get('Content-Type'), 'image/x-icon');
+  assert.equal(faviconResponse.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal((await faviconResponse.arrayBuffer()).byteLength, 1150);
+
+  const faviconPngResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/favicon-32x32.png'), env());
+  assert.equal(faviconPngResponse.status, 200);
+  assert.equal(faviconPngResponse.headers.get('Content-Type'), 'image/png');
+  assert.equal((await faviconPngResponse.arrayBuffer()).byteLength, 1322);
+
+  const appleTouchIconResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/apple-icon-180x180.png'), env());
+  assert.equal(appleTouchIconResponse.status, 200);
+  assert.equal(appleTouchIconResponse.headers.get('Content-Type'), 'image/png');
+  assert.equal((await appleTouchIconResponse.arrayBuffer()).byteLength, 6435);
+
   const logoResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/cocktails.svg'), env());
   assert.equal(logoResponse.status, 200);
   assert.equal(logoResponse.headers.get('Content-Type'), 'image/svg+xml');

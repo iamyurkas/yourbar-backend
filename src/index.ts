@@ -587,6 +587,10 @@ function safeJsonLd(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const FAVICON_LINKS = `  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/favicon/apple-icon-180x180.png">`;
+
 export function renderHomePage(env: Env): string {
   const { iosLink, androidLink, iosStoreUrl, androidStoreUrl } = appStoreLinks(env);
   const baseUrl = publicBaseUrl(env);
@@ -641,6 +645,7 @@ export function renderHomePage(env: Env): string {
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="application-name" content="Your Bar">
   <meta name="apple-itunes-app" content="app-id=6758964503">
+${FAVICON_LINKS}
   <link rel="canonical" href="${escapeHtml(homeUrl)}">
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(description)}">
@@ -1180,6 +1185,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
   <meta name="description" content="${escapedDescription}">
   <meta property="og:description" content="${escapedDescription}">
   <meta property="og:type" content="website">${imageMeta}
+${FAVICON_LINKS}
   <meta property="og:url" content="${publicUrl}">
   <link rel="canonical" href="${publicUrl}">
   <link rel="alternate" type="application/json" href="${apiUrl}">
@@ -1599,7 +1605,7 @@ export function renderRecipeLandingPage(record: RecipeShareRecord, env: Env): st
 }
 
 function renderNotFoundPage(): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recipe not found</title></head><body><main><h1>Recipe not found</h1><p>This YourBar recipe share may have expired or been removed.</p></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${FAVICON_LINKS}<title>Recipe not found</title></head><body><main><h1>Recipe not found</h1><p>This YourBar recipe share may have expired or been removed.</p></main></body></html>`;
 }
 
 async function handleRecipeLanding(id: string, env: Env): Promise<Response> {
@@ -1676,7 +1682,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? htmlResponse(renderHomePage(env))
         : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
-    } else if (path.startsWith("/assets/")) {
+    } else if (path === "/favicon.ico" || path.startsWith("/assets/")) {
       const assetResponse = staticAssetResponse(path);
       if (!assetResponse) {
         response = jsonError("not_found", "Not found", 404);
