@@ -26,11 +26,13 @@ The local default public base URL is `http://localhost:8787`.
 Useful scripts:
 
 ```bash
-npm run dev        # wrangler dev
-npm run deploy     # wrangler deploy
-npm run typecheck  # tsc --noEmit
-npm test           # build and run Node test runner
-npm run check      # typecheck + tests
+npm run dev             # wrangler dev
+npm run deploy          # wrangler deploy (production/default environment)
+npm run deploy:staging  # wrangler deploy --env staging
+npm run deploy:prod     # wrangler deploy (production/default environment)
+npm run typecheck       # tsc --noEmit
+npm test                # build and run Node test runner
+npm run check           # typecheck + tests
 ```
 
 ## Cloudflare KV setup
@@ -74,6 +76,22 @@ preview_bucket_name = "yourbar-recipe-images-preview"
 ```
 
 By default, uploaded images are served back through this Worker at `${PUBLIC_BASE_URL}/images/{key}`. If you put R2 behind a CDN or custom public domain, set `IMAGE_PUBLIC_BASE_URL` to that image base URL.
+
+## Staging deploys
+
+Staging is configured as a separate Wrangler environment named `staging` with Worker name `yourbar-share-api-staging`, its own `RECIPE_SHARES` KV namespace, and the `yourbar-recipe-images-staging` R2 bucket. Use it for safe validation of upcoming Community changes before touching production.
+
+```bash
+npm run deploy:staging
+```
+
+Production remains the default Wrangler environment and deploys only with the production script:
+
+```bash
+npm run deploy:prod
+```
+
+Before deploying, verify the target in the command output: staging deploys should mention `yourbar-share-api-staging`, while production deploys should mention `yourbar-share-api`. To double-check production was not touched during staging validation, inspect the Cloudflare Workers dashboard or run a read-only production health check against `https://api.yourbar.app/health` after the staging deploy.
 
 ## Configuration
 
