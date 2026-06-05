@@ -464,17 +464,17 @@ test('static favicon, home, and store badge assets are served from bundled image
   assert.equal(faviconResponse.status, 200);
   assert.equal(faviconResponse.headers.get('Content-Type'), 'image/x-icon');
   assert.equal(faviconResponse.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
-  assert.equal((await faviconResponse.arrayBuffer()).byteLength, 1150);
+  assert.equal((await faviconResponse.arrayBuffer()).byteLength, 664);
 
   const faviconPngResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/favicon-32x32.png'), env());
   assert.equal(faviconPngResponse.status, 200);
   assert.equal(faviconPngResponse.headers.get('Content-Type'), 'image/png');
-  assert.equal((await faviconPngResponse.arrayBuffer()).byteLength, 1322);
+  assert.equal((await faviconPngResponse.arrayBuffer()).byteLength, 1337);
 
   const appleTouchIconResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/apple-icon-180x180.png'), env());
   assert.equal(appleTouchIconResponse.status, 200);
   assert.equal(appleTouchIconResponse.headers.get('Content-Type'), 'image/png');
-  assert.equal((await appleTouchIconResponse.arrayBuffer()).byteLength, 6435);
+  assert.equal((await appleTouchIconResponse.arrayBuffer()).byteLength, 7954);
 
   const logoResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/cocktails.svg'), env());
   assert.equal(logoResponse.status, 200);
@@ -1017,4 +1017,313 @@ test('image upload enforces configured max size', async () => {
 
   assert.equal(response.status, 413);
   assert.equal((await response.json()).error.code, 'payload_too_large');
+});
+
+class MockD1Statement {
+  constructor(db, query) { this.db = db; this.query = query.replace(/\s+/g, ' ').trim(); this.values = []; }
+  bind(...values) { const stmt = new MockD1Statement(this.db, this.query); stmt.values = values; return stmt; }
+  async first() { const results = await this.db.execute(this.query, this.values); return results.results?.[0] ?? null; }
+  async all() { return this.db.execute(this.query, this.values); }
+  async run() { return this.db.execute(this.query, this.values); }
+}
+
+class MockD1 {
+  submissions = new Map();
+  recipes = new Map();
+  saves = new Map();
+  ratings = new Map();
+  audit = [];
+  prepare(query) { return new MockD1Statement(this, query); }
+  async batch(statements) { const results = []; for (const stmt of statements) results.push(await stmt.run()); return results; }
+  saveKey(recipeId, userId) { return `${recipeId}:${userId}`; }
+  ratingKey(recipeId, userId) { return `${recipeId}:${userId}`; }
+  withUserRows(rows, values) {
+    const [ratingUser, saveUser] = values;
+    return rows.map((row) => ({
+      ...row,
+      current_user_rating: this.ratings.get(this.ratingKey(row.id, ratingUser))?.rating ?? null,
+      is_saved_by_current_user: this.saves.has(this.saveKey(row.id, saveUser)) ? 1 : 0,
+    }));
+  }
+  async execute(query, values) {
+    if (query.startsWith('INSERT INTO community_submissions')) {
+      const [id, submitter_user_id, payload_json, recipe_checksum, created_at] = values;
+      this.submissions.set(id, { id, submitter_user_id, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null });
+      return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('SELECT * FROM community_submissions WHERE id =')) {
+      return { results: this.submissions.has(values[0]) ? [this.submissions.get(values[0])] : [] };
+    }
+    if (query.startsWith('SELECT * FROM community_submissions WHERE status =')) {
+      const [status, limit, offset] = values;
+      const rows = [...this.submissions.values()].filter((row) => row.status === status).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(offset, offset + limit);
+      return { results: rows };
+    }
+    if (query.startsWith('SELECT * FROM community_recipes WHERE submission_id =')) {
+      return { results: [...this.recipes.values()].filter((row) => row.submission_id === values[0]) };
+    }
+    if (query.startsWith('INSERT INTO community_recipes')) {
+      const [id, submission_id, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, published_at, updated_at] = values;
+      this.recipes.set(id, { id, submission_id, payload_json, recipe_checksum, status: 'published', save_count: 0, rating_count: 0, rating_sum: 0, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, published_at, updated_at });
+      return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET payload_json')) {
+      const [payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at, id] = values;
+      const row = this.recipes.get(id); Object.assign(row, { payload_json, recipe_checksum, status: 'published', name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at });
+      return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_submissions SET status = \'approved\'')) {
+      const [reviewed_at, reviewed_by, moderator_notes, id] = values;
+      Object.assign(this.submissions.get(id), { status: 'approved', reviewed_at, reviewed_by, moderator_notes, rejection_reason: null });
+      return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_submissions SET status = \'rejected\'')) {
+      const [reviewed_at, reviewed_by, rejection_reason, moderator_notes, id] = values;
+      Object.assign(this.submissions.get(id), { status: 'rejected', reviewed_at, reviewed_by, rejection_reason, moderator_notes });
+      return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('INSERT INTO admin_moderation_events')) {
+      this.audit.push({ values }); return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('SELECT * FROM community_recipes WHERE id =')) {
+      const row = this.recipes.get(values[0]); return { results: row && row.status === 'published' ? [row] : [] };
+    }
+    if (query.startsWith('SELECT r.*, ur.rating') && query.includes('WHERE r.id =')) {
+      const recipeId = values[2]; const row = this.recipes.get(recipeId);
+      return { results: row && row.status === 'published' ? this.withUserRows([row], values) : [] };
+    }
+    if (query.startsWith('SELECT r.*, NULL') && query.includes('WHERE r.id =')) {
+      const row = this.recipes.get(values[0]);
+      return { results: row && row.status === 'published' ? [{ ...row, current_user_rating: null, is_saved_by_current_user: null }] : [] };
+    }
+    if (query.startsWith('SELECT r.*')) {
+      const hasUser = query.includes('LEFT JOIN community_recipe_ratings');
+      const userValues = hasUser ? values.slice(0, 2) : [];
+      let paramIndex = hasUser ? 2 : 0;
+      let rows = [...this.recipes.values()].filter((row) => row.status === 'published');
+      if (query.includes('name_normalized LIKE')) {
+        const q = String(values[paramIndex]).replaceAll('%', ''); paramIndex += 2;
+        rows = rows.filter((row) => row.name_normalized.includes(q) || row.search_tokens_json.includes(q));
+      }
+      if (query.includes('r.tag_ids_json LIKE')) {
+        const wanted = String(values[paramIndex++]).replaceAll('%', '').replaceAll('"', '');
+        rows = rows.filter((row) => JSON.parse(row.tag_ids_json).includes(wanted));
+      }
+      if (query.includes('r.method_ids_json LIKE')) {
+        const wanted = String(values[paramIndex++]).replaceAll('%', '').replaceAll('"', '');
+        rows = rows.filter((row) => JSON.parse(row.method_ids_json).includes(wanted));
+      }
+      if (query.includes('rating_count DESC')) rows.sort((a, b) => b.rating_count - a.rating_count || b.rating_sum - a.rating_sum);
+      else if (query.includes('save_count DESC')) rows.sort((a, b) => b.save_count - a.save_count);
+      else if (query.includes('name_normalized ASC')) rows.sort((a, b) => a.name_normalized.localeCompare(b.name_normalized));
+      else rows.sort((a, b) => b.published_at.localeCompare(a.published_at));
+      const limit = values.at(-2); const offset = values.at(-1);
+      rows = rows.slice(offset, offset + limit);
+      return { results: hasUser ? this.withUserRows(rows, userValues) : rows.map((row) => ({ ...row, current_user_rating: null, is_saved_by_current_user: null })) };
+    }
+    if (query.startsWith('INSERT OR IGNORE INTO community_recipe_saves')) {
+      const [recipe_id, user_id, created_at] = values; const key = this.saveKey(recipe_id, user_id);
+      if (this.saves.has(key)) return { meta: { changes: 0 } };
+      this.saves.set(key, { recipe_id, user_id, created_at }); return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET save_count = save_count + 1')) {
+      const [, id] = values; this.recipes.get(id).save_count += 1; return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('DELETE FROM community_recipe_saves')) {
+      const [recipe_id, user_id] = values; const key = this.saveKey(recipe_id, user_id); const existed = this.saves.delete(key);
+      return { meta: { changes: existed ? 1 : 0 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET save_count = MAX')) {
+      const [, id] = values; const row = this.recipes.get(id); row.save_count = Math.max(row.save_count - 1, 0); return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('SELECT rating FROM community_recipe_ratings')) {
+      const [recipe_id, user_id] = values; const rating = this.ratings.get(this.ratingKey(recipe_id, user_id)); return { results: rating ? [rating] : [] };
+    }
+    if (query.startsWith('INSERT INTO community_recipe_ratings')) {
+      const [recipe_id, user_id, rating, created_at, updated_at] = values; this.ratings.set(this.ratingKey(recipe_id, user_id), { recipe_id, user_id, rating, created_at, updated_at }); return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_recipe_ratings')) {
+      const [rating, updated_at, recipe_id, user_id] = values; Object.assign(this.ratings.get(this.ratingKey(recipe_id, user_id)), { rating, updated_at }); return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET rating_count = rating_count + 1')) {
+      const [rating, , id] = values; const row = this.recipes.get(id); row.rating_count += 1; row.rating_sum += rating; return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET rating_sum = rating_sum +')) {
+      const [delta, , id] = values; this.recipes.get(id).rating_sum += delta; return { meta: { changes: 1 } };
+    }
+    if (query.startsWith('DELETE FROM community_recipe_ratings')) {
+      const [recipe_id, user_id] = values; const existed = this.ratings.delete(this.ratingKey(recipe_id, user_id)); return { meta: { changes: existed ? 1 : 0 } };
+    }
+    if (query.startsWith('UPDATE community_recipes SET rating_count = MAX')) {
+      const [rating, , id] = values; const row = this.recipes.get(id); row.rating_count = Math.max(row.rating_count - 1, 0); row.rating_sum = Math.max(row.rating_sum - rating, 0); return { meta: { changes: 1 } };
+    }
+    throw new Error(`Unhandled D1 query: ${query}`);
+  }
+}
+
+function communityEnv(overrides = {}) {
+  return env({
+    YOURBAR_DB: new MockD1(),
+    COMMUNITY_FEATURE_ENABLED: 'true',
+    COMMUNITY_SUBMISSIONS_ENABLED: 'true',
+    COMMUNITY_ADMIN_ENABLED: 'true',
+    COMMUNITY_PUBLIC_FEED_ENABLED: 'true',
+    AUTH_TRUSTED_USER_HEADER_ENABLED: 'true',
+    ...overrides,
+  });
+}
+
+const richCommunityPayload = {
+  ...validPayload,
+  recipe: {
+    name: 'Community Daiquiri',
+    description: 'A bright classic.',
+    instructions: ['Shake with ice', 'Strain into coupe'],
+    ingredients: [{ id: 'ing-rum', name: 'Rum', amount: 60, unitId: 'ml', unitName: 'ml', description: 'White rum', imageUrl: 'https://api.yourbar.app/images/rum.webp', tags: [{ id: 'ingredient-tag-spirit', name: 'Spirit' }], optional: false, garnish: false }],
+    tags: [{ id: 'tag-classic', name: 'Classic' }],
+    method: { id: 'method-shaken', name: 'Shaken' },
+    methodId: 'method-shaken',
+    methodName: 'Shaken',
+    glasswareId: 'glass-coupe',
+    glasswareName: 'Coupe',
+    garnish: 'Lime wheel',
+    servings: 1,
+    imageUrl: 'https://api.yourbar.app/images/daiquiri.webp',
+    video: 'https://www.youtube.com/watch?v=daiquiri-demo',
+  },
+};
+
+async function createAndApproveCommunityRecipe(bindings, payload = richCommunityPayload) {
+  const submissionResponse = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'user-1' }, body: JSON.stringify(payload),
+  }), bindings);
+  assert.equal(submissionResponse.status, 201);
+  const submission = await submissionResponse.json();
+  const approveResponse = await handleRequest(new Request(`https://api.yourbar.app/api/admin/community/submissions/${submission.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'CF-Access-Authenticated-User-Email': 'admin@example.com' }, body: JSON.stringify({ action: 'approve', moderatorNotes: 'Looks good' }),
+  }), bindings);
+  assert.equal(approveResponse.status, 200);
+  return approveResponse.json();
+}
+
+test('community feature is disabled by default without changing personal share routes', async () => {
+  const bindings = env();
+  const community = await handleRequest(new Request('https://api.yourbar.app/api/community/recipes'), bindings);
+  assert.equal(community.status, 404);
+  const personal = await handleRequest(new Request('https://api.yourbar.app/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(validPayload) }), bindings);
+  assert.equal(personal.status, 201);
+});
+
+test('community submission validates shared RecipeSharePayloadV1 and creates pending record from auth user', async () => {
+  const bindings = communityEnv();
+  const response = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'real-user' }, body: JSON.stringify({ ...richCommunityPayload, userId: 'spoofed' }),
+  }), bindings);
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.status, 'pending');
+  assert.ok(body.recipeChecksum);
+  assert.equal([...bindings.YOURBAR_DB.submissions.values()][0].submitter_user_id, 'real-user');
+
+  const invalid = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'real-user' }, body: JSON.stringify({ ...richCommunityPayload, recipe: { ...richCommunityPayload.recipe, name: '' } }),
+  }), bindings);
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error.code, 'validation_failed');
+});
+
+test('community admin can reject and non-admin cannot moderate submissions', async () => {
+  const bindings = communityEnv();
+  const created = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'user-1' }, body: JSON.stringify(richCommunityPayload) }), bindings);
+  const submission = await created.json();
+  const nonAdmin = await handleRequest(new Request(`https://api.yourbar.app/api/admin/community/submissions/${submission.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }), bindings);
+  assert.equal(nonAdmin.status, 401);
+  const rejected = await handleRequest(new Request(`https://api.yourbar.app/api/admin/community/submissions/${submission.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'CF-Access-Authenticated-User-Email': 'admin@example.com' }, body: JSON.stringify({ action: 'reject', rejectionReason: 'duplicate' }) }), bindings);
+  assert.equal(rejected.status, 200);
+  const list = await handleRequest(new Request('https://api.yourbar.app/api/community/recipes'), bindings);
+  assert.equal((await list.json()).items.length, 0);
+});
+
+test('approved community recipe appears in list/detail with full importable recipe payload and filters', async () => {
+  const bindings = communityEnv();
+  const approved = await createAndApproveCommunityRecipe(bindings);
+  const recipeId = approved.communityRecipe.id;
+  const list = await handleRequest(new Request('https://api.yourbar.app/api/community/recipes?limit=1&sort=newest&q=daiquiri&tagIds=tag-classic&methodIds=method-shaken'), bindings);
+  assert.equal(list.status, 200);
+  const body = await list.json();
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].id, recipeId);
+  assert.equal(body.items[0].recipe.name, richCommunityPayload.recipe.name);
+  assert.deepEqual(body.items[0].recipe.ingredients, richCommunityPayload.recipe.ingredients);
+  assert.deepEqual(body.items[0].recipe.tags, richCommunityPayload.recipe.tags);
+  assert.equal(body.items[0].recipe.methodId, 'method-shaken');
+  assert.equal(body.items[0].recipe.glasswareName, 'Coupe');
+  assert.equal(body.items[0].recipe.imageUrl, richCommunityPayload.recipe.imageUrl);
+  assert.equal(body.items[0].recipe.video, richCommunityPayload.recipe.video);
+  const detail = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}`), bindings);
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json()).recipe.name, richCommunityPayload.recipe.name);
+});
+
+test('community list supports sort modes and authenticated personalization', async () => {
+  const bindings = communityEnv();
+  const first = await createAndApproveCommunityRecipe(bindings, { ...richCommunityPayload, recipe: { ...richCommunityPayload.recipe, name: 'B Cocktail' } });
+  const second = await createAndApproveCommunityRecipe(bindings, { ...richCommunityPayload, recipe: { ...richCommunityPayload.recipe, name: 'A Cocktail' } });
+  bindings.YOURBAR_DB.recipes.get(first.communityRecipe.id).save_count = 5;
+  bindings.YOURBAR_DB.recipes.get(second.communityRecipe.id).rating_count = 2;
+  bindings.YOURBAR_DB.recipes.get(second.communityRecipe.id).rating_sum = 10;
+  for (const sort of ['newest', 'topRated', 'mostSaved', 'alphabetical', 'random']) {
+    const response = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes?sort=${sort}&seed=s&limit=1`), bindings);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).items.length, 1);
+  }
+  await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${first.communityRecipe.id}/save`, { method: 'POST', headers: { 'X-YourBar-User-Id': 'user-2' } }), bindings);
+  await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${first.communityRecipe.id}/rating`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'user-2' }, body: JSON.stringify({ rating: 4 }) }), bindings);
+  const personalized = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${first.communityRecipe.id}`, { headers: { 'X-YourBar-User-Id': 'user-2' } }), bindings);
+  const body = await personalized.json();
+  assert.equal(body.isSavedByCurrentUser, true);
+  assert.equal(body.currentUserRating, 4);
+});
+
+test('community save is idempotent, returns import DTO, and unsave decrements once', async () => {
+  const bindings = communityEnv();
+  const approved = await createAndApproveCommunityRecipe(bindings);
+  const recipeId = approved.communityRecipe.id;
+  const req = () => new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}/save`, { method: 'POST', headers: { 'X-YourBar-User-Id': 'user-1' } });
+  const first = await handleRequest(req(), bindings);
+  const second = await handleRequest(req(), bindings);
+  assert.equal(first.status, 200); assert.equal(second.status, 200);
+  const firstBody = await first.json(); const secondBody = await second.json();
+  assert.equal(firstBody.saveCount, 1);
+  assert.equal(secondBody.saveCount, 1);
+  assert.equal(firstBody.import.kind, 'yourbar.communityRecipeImport');
+  assert.deepEqual(firstBody.import.recipe, richCommunityPayload.recipe);
+  const unsave1 = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}/save`, { method: 'DELETE', headers: { 'X-YourBar-User-Id': 'user-1' } }), bindings);
+  const unsave2 = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}/save`, { method: 'DELETE', headers: { 'X-YourBar-User-Id': 'user-1' } }), bindings);
+  assert.equal((await unsave1.json()).saveCount, 0);
+  assert.equal((await unsave2.json()).saveCount, 0);
+});
+
+test('community rating create update delete adjusts aggregate statistics', async () => {
+  const bindings = communityEnv();
+  const approved = await createAndApproveCommunityRecipe(bindings);
+  const recipeId = approved.communityRecipe.id;
+  const put = (rating) => handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'user-1' }, body: JSON.stringify({ rating }) }), bindings);
+  let body = await (await put(5)).json();
+  assert.equal(body.ratingCount, 1); assert.equal(body.averageRating, 5);
+  body = await (await put(3)).json();
+  assert.equal(body.ratingCount, 1); assert.equal(body.averageRating, 3);
+  body = await (await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}/rating`, { method: 'DELETE', headers: { 'X-YourBar-User-Id': 'user-1' } }), bindings)).json();
+  assert.equal(body.ratingCount, 0); assert.equal(body.averageRating, 0); assert.equal(body.currentUserRating, null);
+});
+
+test('unauthenticated users cannot submit save or rate community recipes', async () => {
+  const bindings = communityEnv();
+  const submit = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(richCommunityPayload) }), bindings);
+  assert.equal(submit.status, 401);
+  const approved = await createAndApproveCommunityRecipe(bindings);
+  const save = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${approved.communityRecipe.id}/save`, { method: 'POST' }), bindings);
+  assert.equal(save.status, 401);
+  const rating = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${approved.communityRecipe.id}/rating`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: 5 }) }), bindings);
+  assert.equal(rating.status, 401);
 });
