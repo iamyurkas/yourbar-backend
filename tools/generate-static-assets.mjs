@@ -1,6 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const assets = [
+  { route: "/favicon.ico", path: "assets/images/favicon/favicon.ico", contentType: "image/x-icon" },
+  { route: "/assets/images/favicon/favicon-32x32.png", path: "assets/images/favicon/favicon-32x32.png", contentType: "image/png" },
+  { route: "/assets/images/favicon/apple-icon-180x180.png", path: "assets/images/favicon/apple-icon-180x180.png", contentType: "image/png" },
   { route: "/assets/images/cocktails.svg", path: "assets/images/cocktails.svg", contentType: "image/svg+xml" },
   { route: "/assets/images/appstore.png", path: "assets/images/appstore.png", contentType: "image/png" },
   { route: "/assets/images/playmarket.png", path: "assets/images/playmarket.png", contentType: "image/png" },
