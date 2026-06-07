@@ -14,6 +14,8 @@ import {
   type RecipeShareRecord,
 } from "./storage.js";
 import { staticAssetResponse } from "./static-assets.js";
+import { recipeChecksum, sha256Hex } from "./checksum.js";
+import { handleCommunityRequest } from "./community.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
@@ -53,6 +55,17 @@ export interface Env {
   ANDROID_SHA256_CERT_FINGERPRINTS?: string;
   APPLE_APP_SITE_ASSOCIATION_JSON?: string;
   ANDROID_ASSET_LINKS_JSON?: string;
+  YOURBAR_DB?: D1Database;
+  COMMUNITY_FEATURE_ENABLED?: string;
+  COMMUNITY_SUBMISSIONS_ENABLED?: string;
+  COMMUNITY_ADMIN_ENABLED?: string;
+  COMMUNITY_PUBLIC_FEED_ENABLED?: string;
+  AUTH_JWT_HS256_SECRET?: string;
+  AUTH_JWT_SUB_CLAIM?: string;
+  AUTH_TRUSTED_USER_HEADER_ENABLED?: string;
+  COMMUNITY_TEST_USER_HEADER?: string;
+  COMMUNITY_ADMIN_EMAILS?: string;
+  COMMUNITY_ADMIN_AUDIENCES?: string;
 }
 
 const SERVICE_NAME = "yourbar-share-api";
@@ -201,37 +214,6 @@ function recipeUrls(env: Env, id: string): { publicUrl: string; apiUrl: string }
 function imageObjectKeyFromChecksum(checksum: string, contentType: string): string {
   const extension = ALLOWED_IMAGE_TYPES[contentType] ?? "bin";
   return `${checksum}.${extension}`;
-}
-
-function canonicalizeForChecksum(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => canonicalizeForChecksum(item));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entryValue]) => entryValue !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entryValue]) => [key, canonicalizeForChecksum(entryValue)]),
-    );
-  }
-
-  return typeof value === "string" ? value.trim() : value;
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256Hex(value: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", value);
-  return bytesToHex(digest);
-}
-
-export async function recipeChecksum(recipe: unknown): Promise<string> {
-  const canonicalRecipe = JSON.stringify(canonicalizeForChecksum(recipe));
-  return sha256Hex(new TextEncoder().encode(canonicalRecipe));
 }
 
 function normalizeTextLines(value: string | string[] | undefined): string[] {
@@ -1691,6 +1673,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       } else {
         response = assetResponse;
       }
+    } else if (path.startsWith("/api/community/") || path.startsWith("/api/admin/community/")) {
+      response = (await handleCommunityRequest(request, env)) ?? jsonError("not_found", "Not found", 404);
     } else if (path === "/api/images") {
       response = request.method === "POST"
         ? await handlePostImage(request, env)
@@ -1753,3 +1737,4 @@ export default {
   fetch: handleRequest,
   scheduled,
 };
+export { recipeChecksum } from "./checksum.js";

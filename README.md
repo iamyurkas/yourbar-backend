@@ -12,7 +12,7 @@ Minimal Cloudflare Workers backend for sharing YourBar cocktail recipes through 
 - Renders a small HTML fallback page for public links that attempts to open `yourbar://import/recipe/{id}` and prefers localized unit, glassware, method, and tag display names when they are supplied.
 - Serves placeholder iOS Universal Link and Android App Link well-known documents.
 
-This service intentionally does **not** include authentication, user accounts, moderation, or analytics in the MVP.
+Personal share links intentionally remain unauthenticated and KV-backed. The additive Community API includes authenticated user actions and Cloudflare Access-protected moderation, but it is disabled by default in production behind feature flags.
 
 ## Local setup
 
@@ -473,3 +473,150 @@ If you need a fully custom Android document, set `ANDROID_ASSET_LINKS_JSON`; it 
 - Image transformation and thumbnail generation for R2 uploads.
 - Signed delete/update token returned at creation time.
 - Privacy-preserving analytics for share creation and imports.
+
+## Community recipes (additive, feature-flagged)
+
+Community recipes are stored in Cloudflare D1 and are intentionally separate from the existing personal share-link KV/R2 flow. The existing production routes remain unchanged:
+
+- `POST /api/recipes`
+- `GET /api/recipes/:id`
+- `/r/:id`
+- `POST /api/images`
+
+Community routes are disabled unless `COMMUNITY_FEATURE_ENABLED="true"`. Production defaults in `wrangler.toml` keep all Community flags disabled; staging may enable them once the staging D1 binding exists and migrations have been applied.
+
+### Community API surface
+
+User/mobile endpoints:
+
+- `POST /api/community/submissions` creates a `pending` moderated submission from a `RecipeSharePayloadV1` body plus a required top-level `submitterGoogleLogin` string. The authenticated submitter is still taken only from auth context, never from body fields such as `userId` or `submitter_user_id`; `submitterGoogleLogin` is stored separately as the recipe author's Google login identifier, and missing/blank values return `validation_failed`.
+- `GET /api/community/recipes` lists published recipes with cursor pagination, `limit` default `20` and max `50`, and `sort=newest|topRated|mostSaved|alphabetical|random`.
+- `GET /api/community/recipes/:id` returns a single published recipe.
+- `POST /api/community/recipes/:id/save` and `DELETE /api/community/recipes/:id/save` save/unsave for the authenticated user. Save is idempotent and returns an `import` DTO so mobile can add the recipe to the local `All` tab without creating a personal share link.
+- `PUT /api/community/recipes/:id/rating` and `DELETE /api/community/recipes/:id/rating` create/update/delete one rating per user and update aggregate stats.
+
+Admin endpoints, protected by Cloudflare Access:
+
+- `GET /api/admin/community/submissions?status=pending|approved|rejected&limit=&cursor=`
+- `GET /api/admin/community/submissions/:id`
+- `PATCH /api/admin/community/submissions/:id` with `{ "action": "approve" }` or `{ "action": "reject" }`
+
+Community list/detail/save responses include the full importable `recipe` payload, reusing the same shape as personal shares (`RecipeSharePayloadV1.recipe`) rather than a reduced summary DTO. They also include `authorGoogleLogin` (and `source.authorGoogleLogin`) when the recipe came from a submission with the required Google login. List filtering supports `q`, `tagIds`, `methodIds`, `minAverageRating`, and authenticated `savedByMe=true`. Public list/detail requests work without auth and add `isSavedByCurrentUser` / `currentUserRating` only when an authenticated user is present.
+
+### Community D1 setup
+
+Create separate D1 databases for staging and production. Do not reuse production data for tests.
+
+```bash
+npx wrangler d1 create yourbar-community-staging
+# Later, only after explicit production rollout approval:
+# npx wrangler d1 create yourbar-community-production
+```
+
+Add the staging database id returned by Wrangler to `wrangler.toml` under `env.staging` when available:
+
+```toml
+[[env.staging.d1_databases]]
+binding = "YOURBAR_DB"
+database_name = "yourbar-community-staging"
+database_id = "<staging D1 database id>"
+```
+
+Do **not** invent or commit a production D1 `database_id`. Production Community routes stay disabled by feature flag until the database binding and rollout are explicitly approved.
+
+Apply migrations only to staging for this rollout path:
+
+```bash
+npx wrangler d1 migrations apply yourbar-community-staging --env staging
+```
+
+The Community D1 migrations create and evolve:
+
+- `community_submissions` (including `submitter_google_login` after all migrations)
+- `community_recipes` (including `author_google_login` after all migrations)
+- `community_recipe_saves`
+- `community_recipe_ratings`
+- `admin_moderation_events`
+
+It also creates indexes for moderation status, published feed sorts, save lookups, rating lookups, author Google login lookup, and audit lookup by submission.
+
+### Community auth and admin configuration
+
+Mobile/user auth is abstracted behind `requireUser(request, env)` and `getOptionalUser(request, env)`:
+
+- Set `AUTH_JWT_HS256_SECRET` as a Cloudflare secret to verify `Authorization: Bearer <jwt>` tokens signed with HS256.
+- `AUTH_JWT_SUB_CLAIM` defaults to `sub` and controls which JWT claim becomes the trusted user id.
+- `AUTH_TRUSTED_USER_HEADER_ENABLED` is intended only for local tests/dev harnesses; keep it `false` in staging/production unless the Worker is behind a trusted gateway that injects the configured header.
+- `COMMUNITY_TEST_USER_HEADER` defaults to `X-YourBar-User-Id` when trusted headers are explicitly enabled.
+
+Admin auth uses Cloudflare Access headers via `requireAdmin(request, env)`:
+
+1. Protect `/api/admin/community/*` and any future `/admin/community` UI route with a Cloudflare Access application.
+2. Optionally set `COMMUNITY_ADMIN_EMAILS` to a comma-separated allow-list of Access-authenticated admin emails.
+3. Keep `COMMUNITY_ADMIN_ENABLED="false"` in production until manual approval.
+
+Set secrets with Wrangler, scoped to the environment you are configuring:
+
+```bash
+npx wrangler secret put AUTH_JWT_HS256_SECRET --env staging
+npx wrangler secret put COMMUNITY_ADMIN_EMAILS --env staging
+```
+
+### Feature flags
+
+| Flag | Production default | Staging intent | Purpose |
+| --- | --- | --- | --- |
+| `COMMUNITY_FEATURE_ENABLED` | `false` | `true` after staging D1 binding exists | Master Community route gate. |
+| `COMMUNITY_SUBMISSIONS_ENABLED` | `false` | `true` | Enables user submissions. |
+| `COMMUNITY_ADMIN_ENABLED` | `false` | `true` behind Cloudflare Access | Enables moderation API. |
+| `COMMUNITY_PUBLIC_FEED_ENABLED` | `false` | `true` | Enables public list/detail feed. |
+
+If `COMMUNITY_FEATURE_ENABLED !== "true"`, Community routes return `404` with `feature_disabled`; personal share routes continue to work.
+
+## Community rollout and verification checklist
+
+### Local
+
+1. Run checks:
+
+   ```bash
+   npm run check
+   ```
+
+### Staging
+
+1. Confirm staging KV/R2 bindings point to staging resources.
+2. Add staging D1 binding `YOURBAR_DB` only with the real staging database id.
+3. Apply D1 migrations to staging only:
+
+   ```bash
+   npx wrangler d1 migrations apply yourbar-community-staging --env staging
+   ```
+
+4. Deploy staging:
+
+   ```bash
+   npm run deploy:staging
+   ```
+
+5. Smoke-test staging at `https://staging-api.yourbar.app`:
+   - `GET /health`
+   - personal share create/read: `POST /api/recipes`, then `GET /api/recipes/:id`
+   - image upload/read: `POST /api/images`, then `GET /images/:key`
+   - community submission: `POST /api/community/submissions`
+   - admin approve/reject: `PATCH /api/admin/community/submissions/:id`
+   - community list/detail: `GET /api/community/recipes`, `GET /api/community/recipes/:id`
+   - save/rating: `POST /api/community/recipes/:id/save`, `PUT /api/community/recipes/:id/rating`
+
+### Production
+
+1. Do not run production migrations unless explicitly requested.
+2. Deploy production only with Community disabled (`COMMUNITY_*` flags `false`).
+3. Smoke-test existing production endpoints only:
+   - `GET /health`
+   - `POST /api/recipes`
+   - `GET /api/recipes/:id`
+   - `/r/:id`
+   - `POST /api/images`
+4. Enable Community only after manual approval, production D1 binding is configured, Cloudflare Access protects admin routes, and production migrations are intentionally applied.
+
