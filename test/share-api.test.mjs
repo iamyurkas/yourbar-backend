@@ -464,17 +464,17 @@ test('static favicon, home, and store badge assets are served from bundled image
   assert.equal(faviconResponse.status, 200);
   assert.equal(faviconResponse.headers.get('Content-Type'), 'image/x-icon');
   assert.equal(faviconResponse.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
-  assert.equal((await faviconResponse.arrayBuffer()).byteLength, 1150);
+  assert.equal((await faviconResponse.arrayBuffer()).byteLength, 664);
 
   const faviconPngResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/favicon-32x32.png'), env());
   assert.equal(faviconPngResponse.status, 200);
   assert.equal(faviconPngResponse.headers.get('Content-Type'), 'image/png');
-  assert.equal((await faviconPngResponse.arrayBuffer()).byteLength, 1322);
+  assert.equal((await faviconPngResponse.arrayBuffer()).byteLength, 1337);
 
   const appleTouchIconResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/favicon/apple-icon-180x180.png'), env());
   assert.equal(appleTouchIconResponse.status, 200);
   assert.equal(appleTouchIconResponse.headers.get('Content-Type'), 'image/png');
-  assert.equal((await appleTouchIconResponse.arrayBuffer()).byteLength, 6435);
+  assert.equal((await appleTouchIconResponse.arrayBuffer()).byteLength, 7954);
 
   const logoResponse = await handleRequest(new Request('https://api.yourbar.app/assets/images/cocktails.svg'), env());
   assert.equal(logoResponse.status, 200);

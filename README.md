@@ -473,3 +473,103 @@ If you need a fully custom Android document, set `ANDROID_ASSET_LINKS_JSON`; it 
 - Image transformation and thumbnail generation for R2 uploads.
 - Signed delete/update token returned at creation time.
 - Privacy-preserving analytics for share creation and imports.
+
+## Community recipes (D1, moderated, feature-flagged)
+
+Community routes are additive and reuse the complete `RecipeSharePayloadV1.recipe` payload for list, detail, save, and import responses. Personal share routes (`POST /api/recipes`, `GET /api/recipes/:id`, `/r/:id`, and `POST /api/images`) remain KV/R2-backed and are independent of Community.
+
+### Safety and feature flags
+
+Production defaults in `wrangler.toml` disable all Community behavior:
+
+- `COMMUNITY_FEATURE_ENABLED=false` is the master switch; Community API routes return `404 feature_disabled`.
+- `COMMUNITY_SUBMISSIONS_ENABLED=false` gates new submissions.
+- `COMMUNITY_ADMIN_ENABLED=false` gates moderation.
+- `COMMUNITY_PUBLIC_FEED_ENABLED=false` gates public list/detail reads.
+
+Staging defaults enable these flags, but routes still return `feature_disabled` until the staging `YOURBAR_DB` binding is configured. Community data is never stored in `RECIPE_SHARES` KV.
+
+### Create and bind D1
+
+Wrangler in this checkout could not discover an existing database because the installed runtime is Node 20 while Wrangler 4 requires Node 22+. No database ID was guessed or added.
+
+Use Node 22+ and create separate databases only when authorized:
+
+```bash
+npx wrangler d1 create yourbar-community-staging
+# Later, only as part of an explicitly approved production rollout:
+npx wrangler d1 create yourbar-community
+```
+
+Copy the real staging ID into an `[[env.staging.d1_databases]]` block using binding `YOURBAR_DB`, database name `yourbar-community-staging`, and `migrations_dir = "migrations"`. Do not add a production binding until its real database exists. The commented templates at the bottom of `wrangler.toml` show the exact shape.
+
+Apply migrations to local or staging D1 only:
+
+```bash
+npx wrangler d1 migrations apply yourbar-community-staging --local
+npx wrangler d1 migrations apply yourbar-community-staging --env staging --remote
+```
+
+Never run the production migration command without explicit approval.
+
+### Mobile authentication
+
+Authenticated Community write actions use an HS256 bearer JWT. Store `AUTH_JWT_SECRET` with `wrangler secret put` (never in TOML). Optional claim checks:
+
+- `AUTH_JWT_ISSUER`
+- `AUTH_JWT_AUDIENCE`
+- `AUTH_JWT_USER_ID_CLAIM` (defaults to `sub`)
+
+JWTs must have a valid signature and non-expired `exp`. `userId` and `submitter_user_id` request fields are ignored. `googleLogin` is required separately on submissions as author metadata and is not authentication.
+
+`AUTH_TEST_MODE=true` enables test-only `X-Test-User-Id` headers and must never be configured in staging or production.
+
+### Cloudflare Access for administrators
+
+Protect `/api/admin/community/*` at Cloudflare Access and configure:
+
+- `CF_ACCESS_TEAM_DOMAIN` (for example `team.cloudflareaccess.com`)
+- `CF_ACCESS_AUD` (the Access application audience tag)
+- `COMMUNITY_ADMIN_EMAILS` (optional comma-separated second allow-list)
+
+The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the team JWKS and checks its audience/expiration. Google login values are never accepted for admin authorization.
+
+### Community API
+
+- `POST /api/community/submissions`
+- `GET /api/admin/community/submissions`
+- `GET|PATCH /api/admin/community/submissions/:id`
+- `GET /api/community/recipes`
+- `GET /api/community/recipes/:id`
+- `POST|DELETE /api/community/recipes/:id/save`
+- `PUT|DELETE /api/community/recipes/:id/rating`
+
+The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating aggregate counters are maintained by D1 triggers, making duplicate saves and rating replacement atomic with the user-specific row mutation.
+
+Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`. A separate admin UI was intentionally not exposed; the protected moderation API is ready for a dedicated frontend.
+
+### Local verification checklist
+
+```bash
+npm run check
+```
+
+- Confirm Community routes return `feature_disabled` with the master flag off.
+- Use local D1 only; never point tests at production KV, R2, or D1.
+- Re-run personal share/image tests to verify backward compatibility.
+
+### Staging rollout checklist
+
+1. Use Worker `yourbar-share-api-staging`, `https://staging-api.yourbar.app`, staging KV, `yourbar-recipe-images-staging`, and the real staging D1 binding.
+2. Apply `migrations/0001_community.sql` to staging D1.
+3. Configure mobile JWT secrets and Cloudflare Access settings.
+4. Run `npm run deploy:staging` (never `npm run deploy`).
+5. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
+
+### Production rollout checklist (manual approval required)
+
+1. Do **not** run production migrations or create/change production bindings as part of a normal staging deployment.
+2. Deploy only while every Community feature flag remains `false`.
+3. Smoke-test `GET /health`, `POST /api/recipes`, `GET /api/recipes/:id`, `/r/:id`, and `POST /api/images`.
+4. Create/bind production D1 and apply its migration only after explicit approval.
+5. Configure production auth/Access secrets, then enable flags incrementally after manual approval.
