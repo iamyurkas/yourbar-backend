@@ -489,7 +489,7 @@ Community routes are disabled unless `COMMUNITY_FEATURE_ENABLED="true"`. Product
 
 User/mobile endpoints:
 
-- `POST /api/community/submissions` creates a `pending` moderated submission from a `RecipeSharePayloadV1` body. The submitter is taken only from authentication context, never from body fields such as `userId` or `submitter_user_id`.
+- `POST /api/community/submissions` creates a `pending` moderated submission from a `RecipeSharePayloadV1` body plus a required top-level `submitterGoogleLogin` string. The authenticated submitter is still taken only from auth context, never from body fields such as `userId` or `submitter_user_id`; `submitterGoogleLogin` is stored separately as the recipe author's Google login identifier, and missing/blank values return `validation_failed`.
 - `GET /api/community/recipes` lists published recipes with cursor pagination, `limit` default `20` and max `50`, and `sort=newest|topRated|mostSaved|alphabetical|random`.
 - `GET /api/community/recipes/:id` returns a single published recipe.
 - `POST /api/community/recipes/:id/save` and `DELETE /api/community/recipes/:id/save` save/unsave for the authenticated user. Save is idempotent and returns an `import` DTO so mobile can add the recipe to the local `All` tab without creating a personal share link.
@@ -501,7 +501,7 @@ Admin endpoints, protected by Cloudflare Access:
 - `GET /api/admin/community/submissions/:id`
 - `PATCH /api/admin/community/submissions/:id` with `{ "action": "approve" }` or `{ "action": "reject" }`
 
-Community list/detail/save responses include the full importable `recipe` payload, reusing the same shape as personal shares (`RecipeSharePayloadV1.recipe`) rather than a reduced summary DTO. List filtering supports `q`, `tagIds`, `methodIds`, `minAverageRating`, and authenticated `savedByMe=true`. Public list/detail requests work without auth and add `isSavedByCurrentUser` / `currentUserRating` only when an authenticated user is present.
+Community list/detail/save responses include the full importable `recipe` payload, reusing the same shape as personal shares (`RecipeSharePayloadV1.recipe`) rather than a reduced summary DTO. They also include `authorGoogleLogin` (and `source.authorGoogleLogin`) when the recipe came from a submission with the required Google login. List filtering supports `q`, `tagIds`, `methodIds`, `minAverageRating`, and authenticated `savedByMe=true`. Public list/detail requests work without auth and add `isSavedByCurrentUser` / `currentUserRating` only when an authenticated user is present.
 
 ### Community D1 setup
 
@@ -530,15 +530,15 @@ Apply migrations only to staging for this rollout path:
 npx wrangler d1 migrations apply yourbar-community-staging --env staging
 ```
 
-The migration `migrations/0001_community_recipes.sql` creates:
+The Community D1 migrations create and evolve:
 
-- `community_submissions`
-- `community_recipes`
+- `community_submissions` (including `submitter_google_login` after all migrations)
+- `community_recipes` (including `author_google_login` after all migrations)
 - `community_recipe_saves`
 - `community_recipe_ratings`
 - `admin_moderation_events`
 
-It also creates indexes for moderation status, published feed sorts, save lookups, rating lookups, and audit lookup by submission.
+It also creates indexes for moderation status, published feed sorts, save lookups, rating lookups, author Google login lookup, and audit lookup by submission.
 
 ### Community auth and admin configuration
 

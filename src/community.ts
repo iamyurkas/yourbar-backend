@@ -18,6 +18,7 @@ type CommunityEnv = Env & { YOURBAR_DB?: D1Database };
 type SubmissionRow = {
   id: string;
   submitter_user_id: string;
+  submitter_google_login: string | null;
   payload_json: string;
   recipe_checksum: string;
   status: "pending" | "approved" | "rejected";
@@ -43,6 +44,7 @@ type RecipeRow = {
   method_ids_json: string;
   published_at: string;
   updated_at: string;
+  author_google_login?: string | null;
   current_user_rating?: number | null;
   is_saved_by_current_user?: number | null;
 };
@@ -62,7 +64,8 @@ type CommunityRecipeDTO = {
   currentUserRating?: number | null;
   publicUrl: string;
   shareUrl: string;
-  source: { kind: "community"; submissionId: string };
+  authorGoogleLogin?: string;
+  source: { kind: "community"; submissionId: string; authorGoogleLogin?: string };
 };
 
 const DEFAULT_LIMIT = 20;
@@ -155,6 +158,10 @@ function toCommunityRecipe(row: RecipeRow, env: Env, user: AuthenticatedUser | n
     shareUrl: communityPublicUrl(env, row.id),
     source: { kind: "community", submissionId: row.submission_id },
   };
+  if (row.author_google_login?.trim()) {
+    dto.authorGoogleLogin = row.author_google_login.trim();
+    dto.source.authorGoogleLogin = row.author_google_login.trim();
+  }
   if (user) {
     dto.isSavedByCurrentUser = Number(row.is_saved_by_current_user ?? 0) > 0;
     dto.currentUserRating = row.current_user_rating ?? null;
@@ -187,10 +194,43 @@ function id(): string {
   return crypto.randomUUID();
 }
 
+type CommunitySubmissionBody = RecipeSharePayloadV1 & {
+  submitterGoogleLogin?: unknown;
+  googleLogin?: unknown;
+  authorGoogleLogin?: unknown;
+};
+
+function sharedRecipePayloadOnly(value: RecipeSharePayloadV1): RecipeSharePayloadV1 {
+  const payload: RecipeSharePayloadV1 = {
+    schemaVersion: value.schemaVersion,
+    kind: value.kind,
+    recipe: value.recipe,
+  };
+  if (value.source !== undefined) payload.source = value.source;
+  return payload;
+}
+
+function submitterGoogleLoginFromBody(value: unknown): { ok: true; value: string } | { ok: false; response: Response } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, response: jsonError("validation_failed", "Google login is required for community submissions", 400, [{ path: "submitterGoogleLogin", message: "Must be provided" }]) };
+  }
+  const body = value as CommunitySubmissionBody;
+  const raw = body.submitterGoogleLogin ?? body.googleLogin ?? body.authorGoogleLogin;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return { ok: false, response: jsonError("validation_failed", "Google login is required for community submissions", 400, [{ path: "submitterGoogleLogin", message: "Must be a non-empty string" }]) };
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.length > 320) {
+    return { ok: false, response: jsonError("validation_failed", "Google login is invalid", 400, [{ path: "submitterGoogleLogin", message: "Must be at most 320 characters" }]) };
+  }
+  return { ok: true, value: normalized };
+}
+
 function submissionDto(row: SubmissionRow) {
   return {
     id: row.id,
     submitterUserId: row.submitter_user_id,
+    submitterGoogleLogin: row.submitter_google_login ?? null,
     status: row.status,
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at ?? null,
@@ -207,13 +247,15 @@ async function handleCreateSubmission(request: Request, env: CommunityEnv): Prom
   const db = dbOrError(env); if (!db.ok) return db.response;
   const auth = await requireUser(request, env); if (!auth.ok) return auth.response;
   const json = await readJson(request, maxPayloadBytes(env)); if (!json.ok) return json.response;
+  const submitterGoogleLogin = submitterGoogleLoginFromBody(json.value); if (!submitterGoogleLogin.ok) return submitterGoogleLogin.response;
   const validation = validateRecipeSharePayloadV1(json.value);
   if (!validation.ok) return jsonError("validation_failed", "Recipe share payload is invalid", 400, validation.issues);
-  const checksum = await recipeChecksum(validation.value.recipe);
+  const payload = sharedRecipePayloadOnly(validation.value);
+  const checksum = await recipeChecksum(payload.recipe);
   const now = new Date().toISOString();
   const submissionId = id();
-  await db.db.prepare(`INSERT INTO community_submissions (id, submitter_user_id, payload_json, recipe_checksum, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)`).bind(submissionId, auth.user.id, JSON.stringify(validation.value), checksum, now).run();
-  return jsonResponse({ id: submissionId, status: "pending", createdAt: now, recipeChecksum: checksum }, 201);
+  await db.db.prepare(`INSERT INTO community_submissions (id, submitter_user_id, submitter_google_login, payload_json, recipe_checksum, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)`).bind(submissionId, auth.user.id, submitterGoogleLogin.value, JSON.stringify(payload), checksum, now).run();
+  return jsonResponse({ id: submissionId, status: "pending", createdAt: now, recipeChecksum: checksum, submitterGoogleLogin: submitterGoogleLogin.value }, 201);
 }
 
 async function handleListSubmissions(request: Request, env: CommunityEnv): Promise<Response> {
@@ -251,8 +293,8 @@ async function approveSubmission(db: D1Database, env: Env, row: SubmissionRow, a
   };
   await db.batch([
     existing
-      ? db.prepare(`UPDATE community_recipes SET payload_json = ?, recipe_checksum = ?, status = 'published', name_normalized = ?, search_tokens_json = ?, tag_ids_json = ?, method_ids_json = ?, updated_at = ? WHERE id = ?`).bind(JSON.stringify(payload), row.recipe_checksum, searchable.name, JSON.stringify(searchable.tokens), JSON.stringify(searchable.tags), JSON.stringify(searchable.methods), now, recipeId)
-      : db.prepare(`INSERT INTO community_recipes (id, submission_id, payload_json, recipe_checksum, status, save_count, rating_count, rating_sum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, published_at, updated_at) VALUES (?, ?, ?, ?, 'published', 0, 0, 0, ?, ?, ?, ?, ?, ?)`).bind(recipeId, row.id, JSON.stringify(payload), row.recipe_checksum, searchable.name, JSON.stringify(searchable.tokens), JSON.stringify(searchable.tags), JSON.stringify(searchable.methods), now, now),
+      ? db.prepare(`UPDATE community_recipes SET payload_json = ?, recipe_checksum = ?, status = 'published', name_normalized = ?, search_tokens_json = ?, tag_ids_json = ?, method_ids_json = ?, author_google_login = ?, updated_at = ? WHERE id = ?`).bind(JSON.stringify(payload), row.recipe_checksum, searchable.name, JSON.stringify(searchable.tokens), JSON.stringify(searchable.tags), JSON.stringify(searchable.methods), row.submitter_google_login, now, recipeId)
+      : db.prepare(`INSERT INTO community_recipes (id, submission_id, payload_json, recipe_checksum, status, save_count, rating_count, rating_sum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, author_google_login, published_at, updated_at) VALUES (?, ?, ?, ?, 'published', 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)`).bind(recipeId, row.id, JSON.stringify(payload), row.recipe_checksum, searchable.name, JSON.stringify(searchable.tokens), JSON.stringify(searchable.tags), JSON.stringify(searchable.methods), row.submitter_google_login, now, now),
     db.prepare(`UPDATE community_submissions SET status = 'approved', reviewed_at = ?, reviewed_by = ?, moderator_notes = ?, rejection_reason = NULL WHERE id = ?`).bind(now, admin.id, moderatorNotes ?? null, row.id),
     db.prepare(`INSERT INTO admin_moderation_events (id, admin_user_id, action, submission_id, recipe_id, notes, reason, created_at) VALUES (?, ?, 'approve', ?, ?, ?, NULL, ?)`).bind(id(), admin.id, row.id, recipeId, moderatorNotes ?? null, now),
   ]);

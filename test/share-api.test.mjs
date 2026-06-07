@@ -1047,8 +1047,8 @@ class MockD1 {
   }
   async execute(query, values) {
     if (query.startsWith('INSERT INTO community_submissions')) {
-      const [id, submitter_user_id, payload_json, recipe_checksum, created_at] = values;
-      this.submissions.set(id, { id, submitter_user_id, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null });
+      const [id, submitter_user_id, submitter_google_login, payload_json, recipe_checksum, created_at] = values;
+      this.submissions.set(id, { id, submitter_user_id, submitter_google_login, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null });
       return { meta: { changes: 1 } };
     }
     if (query.startsWith('SELECT * FROM community_submissions WHERE id =')) {
@@ -1063,13 +1063,13 @@ class MockD1 {
       return { results: [...this.recipes.values()].filter((row) => row.submission_id === values[0]) };
     }
     if (query.startsWith('INSERT INTO community_recipes')) {
-      const [id, submission_id, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, published_at, updated_at] = values;
-      this.recipes.set(id, { id, submission_id, payload_json, recipe_checksum, status: 'published', save_count: 0, rating_count: 0, rating_sum: 0, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, published_at, updated_at });
+      const [id, submission_id, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, author_google_login, published_at, updated_at] = values;
+      this.recipes.set(id, { id, submission_id, payload_json, recipe_checksum, status: 'published', save_count: 0, rating_count: 0, rating_sum: 0, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, author_google_login, published_at, updated_at });
       return { meta: { changes: 1 } };
     }
     if (query.startsWith('UPDATE community_recipes SET payload_json')) {
-      const [payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at, id] = values;
-      const row = this.recipes.get(id); Object.assign(row, { payload_json, recipe_checksum, status: 'published', name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at });
+      const [payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, author_google_login, updated_at, id] = values;
+      const row = this.recipes.get(id); Object.assign(row, { payload_json, recipe_checksum, status: 'published', name_normalized, search_tokens_json, tag_ids_json, method_ids_json, author_google_login, updated_at });
       return { meta: { changes: 1 } };
     }
     if (query.startsWith('UPDATE community_submissions SET status = \'approved\'')) {
@@ -1175,6 +1175,7 @@ function communityEnv(overrides = {}) {
 
 const richCommunityPayload = {
   ...validPayload,
+  submitterGoogleLogin: 'Author@Gmail.com',
   recipe: {
     name: 'Community Daiquiri',
     description: 'A bright classic.',
@@ -1223,7 +1224,17 @@ test('community submission validates shared RecipeSharePayloadV1 and creates pen
   const body = await response.json();
   assert.equal(body.status, 'pending');
   assert.ok(body.recipeChecksum);
-  assert.equal([...bindings.YOURBAR_DB.submissions.values()][0].submitter_user_id, 'real-user');
+  assert.equal(body.submitterGoogleLogin, 'author@gmail.com');
+  const storedSubmission = [...bindings.YOURBAR_DB.submissions.values()][0];
+  assert.equal(storedSubmission.submitter_user_id, 'real-user');
+  assert.equal(storedSubmission.submitter_google_login, 'author@gmail.com');
+  assert.equal(JSON.parse(storedSubmission.payload_json).submitterGoogleLogin, undefined);
+
+  const missingGoogleLogin = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'real-user' }, body: JSON.stringify({ ...richCommunityPayload, submitterGoogleLogin: undefined, googleLogin: undefined, authorGoogleLogin: undefined }),
+  }), bindings);
+  assert.equal(missingGoogleLogin.status, 400);
+  assert.equal((await missingGoogleLogin.json()).error.code, 'validation_failed');
 
   const invalid = await handleRequest(new Request('https://api.yourbar.app/api/community/submissions', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-YourBar-User-Id': 'real-user' }, body: JSON.stringify({ ...richCommunityPayload, recipe: { ...richCommunityPayload.recipe, name: '' } }),
@@ -1260,6 +1271,8 @@ test('approved community recipe appears in list/detail with full importable reci
   assert.equal(body.items[0].recipe.glasswareName, 'Coupe');
   assert.equal(body.items[0].recipe.imageUrl, richCommunityPayload.recipe.imageUrl);
   assert.equal(body.items[0].recipe.video, richCommunityPayload.recipe.video);
+  assert.equal(body.items[0].authorGoogleLogin, 'author@gmail.com');
+  assert.equal(body.items[0].source.authorGoogleLogin, 'author@gmail.com');
   const detail = await handleRequest(new Request(`https://api.yourbar.app/api/community/recipes/${recipeId}`), bindings);
   assert.equal(detail.status, 200);
   assert.equal((await detail.json()).recipe.name, richCommunityPayload.recipe.name);
