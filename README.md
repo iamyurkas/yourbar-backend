@@ -487,44 +487,40 @@ Production defaults in `wrangler.toml` disable all Community behavior:
 - `COMMUNITY_ADMIN_ENABLED=false` gates moderation.
 - `COMMUNITY_PUBLIC_FEED_ENABLED=false` gates public list/detail reads.
 
-Staging defaults keep these flags disabled until the staging `YOURBAR_DB` binding is configured and migrated. This prevents a deployment where routes are advertised as enabled but fail with `Community storage is not configured`. Community data is never stored in `RECIPE_SHARES` KV.
+Staging is configured with the dedicated `yourbar-community-staging` D1 binding and enables Community flags. The migration must be applied before deploying that configuration. Community data is never stored in `RECIPE_SHARES` KV.
 
 ### Create and bind D1
 
-Wrangler in this checkout could not discover an existing database because the installed runtime is Node 20 while Wrangler 4 requires Node 22+. No database ID was guessed or added.
-
-Use Node 22+ and create separate databases only when authorized:
+The staging database already exists as `yourbar-community-staging` and is bound only under `env.staging`. Use Node 22+ for Wrangler commands. Create a production database only as part of an explicitly approved production rollout:
 
 ```bash
-npx wrangler d1 create yourbar-community-staging
-# Later, only as part of an explicitly approved production rollout:
+# Production only, after explicit approval:
 npx wrangler d1 create yourbar-community
 ```
 
-Copy the real staging ID into an `[[env.staging.d1_databases]]` block using binding `YOURBAR_DB`, database name `yourbar-community-staging`, and `migrations_dir = "migrations"`. Apply the migration, and only then change the four staging Community flags to `true`. Do not add a production binding until its real database exists. The commented templates at the bottom of `wrangler.toml` show the exact shape.
+The real staging binding is committed under `[[env.staging.d1_databases]]`. Do not add a production binding until its real database exists and production rollout is explicitly approved.
 
-`npm run deploy:staging` now runs a configuration guard first. It refuses to deploy if Community is enabled without `YOURBAR_DB`, preventing the broken staging state where mobile receives `feature_disabled: Community storage is not configured`.
+A Worker deploy is **not required before a D1 migration**. Wrangler reads the D1 binding/database name from `wrangler.toml`, so the correct first-time order is: apply the staging migration, then deploy the staging Worker. `npm run deploy:staging` runs a configuration guard and refuses enabled Community without `YOURBAR_DB`.
 
 Apply migrations to local or staging D1 only:
 
 ```bash
 npx wrangler d1 migrations apply yourbar-community-staging --local
-npx wrangler d1 migrations apply yourbar-community-staging --env staging --remote
+npm run migrate:staging
 ```
 
 Never run the production migration command without explicit approval.
 
-### Mobile authentication
+### Lightweight Community user identity (no JWT in staging)
 
-Authenticated Community write actions use an HS256 bearer JWT. Store `AUTH_JWT_SECRET` with `wrangler secret put` (never in TOML). Optional claim checks:
+Staging intentionally uses `COMMUNITY_USER_AUTH_MODE=unverified` for faster iteration. This is an identity hint, not cryptographic authentication:
 
-- `AUTH_JWT_ISSUER`
-- `AUTH_JWT_AUDIENCE`
-- `AUTH_JWT_USER_ID_CLAIM` (defaults to `sub`)
+- Submission uses the required `googleLogin` body field as both the author identifier and the user key; no JWT or extra header is required.
+- Save/rating and optional feed personalization use `X-YourBar-Google-Login: user@gmail.com` because those requests do not otherwise contain `googleLogin`.
+- `userId` and `submitter_user_id` body fields remain ignored.
+- Admin moderation is **not** opened by this mode and still requires Cloudflare Access.
 
-JWTs must have a valid signature and non-expired `exp`. `userId` and `submitter_user_id` request fields are ignored. `googleLogin` is required separately on submissions as author metadata and is not authentication.
-
-`AUTH_TEST_MODE=true` enables test-only `X-Test-User-Id` headers and must never be configured in staging or production.
+This mode allows impersonation if somebody knows another user's email. That trade-off is explicit and acceptable only for the lightweight Community rollout. Production remains configured with `COMMUNITY_USER_AUTH_MODE=jwt` and all Community flags disabled. If stronger identity is needed later, configure `AUTH_JWT_SECRET`, optional issuer/audience settings, and switch the environment to `COMMUNITY_USER_AUTH_MODE=jwt`.
 
 ### Cloudflare Access for administrators
 
@@ -562,12 +558,11 @@ npm run check
 
 ### Staging rollout checklist
 
-1. Use Worker `yourbar-share-api-staging`, `https://staging-api.yourbar.app`, staging KV, `yourbar-recipe-images-staging`, and the real staging D1 binding.
-2. Apply `migrations/0001_community.sql` to staging D1.
-3. Configure mobile JWT secrets and Cloudflare Access settings.
-4. Set the four staging Community flags to `true` only after the binding and migration exist.
-5. Run `npm run deploy:staging` (never `npm run deploy`); its pre-deploy guard verifies that enabled Community has a D1 binding.
-6. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
+1. Use Worker `yourbar-share-api-staging`, `https://staging-api.yourbar.app`, staging KV, `yourbar-recipe-images-staging`, and the committed staging D1 binding.
+2. Run `npm run migrate:staging` before the first Community deploy; the current database screenshot shows `num_tables = 0`, so this step is still required.
+3. Configure Cloudflare Access settings before testing admin moderation. Mobile JWT secrets are not required in staging unverified mode.
+4. Run `npm run deploy:staging` (never `npm run deploy`); its pre-deploy guard verifies that enabled Community has a D1 binding.
+5. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
 
 ### Production rollout checklist (manual approval required)
 

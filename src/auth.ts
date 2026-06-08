@@ -8,6 +8,8 @@ export interface AuthEnv {
   AUTH_JWT_ISSUER?: string;
   AUTH_JWT_AUDIENCE?: string;
   AUTH_JWT_USER_ID_CLAIM?: string;
+  COMMUNITY_USER_AUTH_MODE?: string;
+  COMMUNITY_USER_ID_HEADER?: string;
   AUTH_TEST_MODE?: string;
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
@@ -75,9 +77,19 @@ function testUser(request: Request, env: AuthEnv): AuthenticatedUser | null {
   return email ? { id, email } : { id };
 }
 
-export async function getOptionalUser(request: Request, env: AuthEnv): Promise<AuthenticatedUser | null> {
+function unverifiedUser(request: Request, env: AuthEnv, fallbackId?: string): AuthenticatedUser | null {
+  if (env.COMMUNITY_USER_AUTH_MODE !== "unverified") return null;
+  const headerName = env.COMMUNITY_USER_ID_HEADER?.trim() || "X-YourBar-Google-Login";
+  const id = request.headers.get(headerName)?.trim() || fallbackId?.trim();
+  if (!id || id.length > 320) return null;
+  return id.includes("@") ? { id: `google:${id.toLowerCase()}`, email: id } : { id: `client:${id}` };
+}
+
+export async function getOptionalUser(request: Request, env: AuthEnv, fallbackId?: string): Promise<AuthenticatedUser | null> {
   const testing = testUser(request, env);
   if (testing) return testing;
+  const unverified = unverifiedUser(request, env, fallbackId);
+  if (unverified) return unverified;
   const token = bearerToken(request);
   if (!token) return null;
   if (!env.AUTH_JWT_SECRET) throw new AuthError(jsonError("unauthorized", "User authentication is not configured", 401));
@@ -92,8 +104,8 @@ export async function getOptionalUser(request: Request, env: AuthEnv): Promise<A
   }
 }
 
-export async function requireUser(request: Request, env: AuthEnv): Promise<AuthenticatedUser> {
-  const user = await getOptionalUser(request, env);
+export async function requireUser(request: Request, env: AuthEnv, fallbackId?: string): Promise<AuthenticatedUser> {
+  const user = await getOptionalUser(request, env, fallbackId);
   if (!user) throw new AuthError(jsonError("unauthorized", "Authentication is required", 401));
   return user;
 }

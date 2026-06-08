@@ -15,7 +15,8 @@
     "generate-static-assets": "node tools/generate-static-assets.mjs",
     "prebuild": "npm run generate-static-assets",
     "validate:config": "node tools/validate-community-config.mjs production && node tools/validate-community-config.mjs staging",
-    "validate:staging": "node tools/validate-community-config.mjs staging"
+    "validate:staging": "node tools/validate-community-config.mjs staging",
+    "migrate:staging": "wrangler d1 migrations apply yourbar-community-staging --env staging --remote"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

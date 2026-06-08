@@ -174,3 +174,24 @@ test('rating create, update, delete maintains aggregates and personalization', a
   const update = await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: userHeaders(), body: JSON.stringify({ rating: 3 }) }); assert.deepEqual(await update.json(), { ratingCount: 1, ratingSum: 3, averageRating: 3, currentUserRating: 3 });
   const remove = await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'DELETE', headers: userHeaders() }); assert.deepEqual(await remove.json(), { ratingCount: 0, ratingSum: 0, averageRating: 0, currentUserRating: null });
 });
+
+test('staging unverified mode accepts submission googleLogin without JWT', async () => {
+  const database = new MemoryD1();
+  const response = await handleRequest(new Request('https://staging-api.yourbar.app/api/community/submissions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ googleLogin: 'Fast.User@Gmail.com', payload: richPayload }),
+  }), env(database, { AUTH_TEST_MODE: 'false', COMMUNITY_USER_AUTH_MODE: 'unverified' }));
+  assert.equal(response.status, 201);
+  const created = await response.json();
+  assert.equal(database.submissions.get(created.id).submitter_user_id, 'google:fast.user@gmail.com');
+});
+
+test('staging unverified mode uses Google login header for save and personalization', async () => {
+  const database = new MemoryD1(); const created = await submit(database); const approved = await moderate(database, created.id, 'approve'); const recipeId = (await approved.json()).recipeId;
+  const headers = { 'X-YourBar-Google-Login': 'reader@gmail.com' };
+  const saved = await handleRequest(new Request(`https://staging-api.yourbar.app/api/community/recipes/${recipeId}/save`, { method: 'POST', headers }), env(database, { AUTH_TEST_MODE: 'false', COMMUNITY_USER_AUTH_MODE: 'unverified' }));
+  assert.equal(saved.status, 200);
+  const detail = await handleRequest(new Request(`https://staging-api.yourbar.app/api/community/recipes/${recipeId}`, { headers }), env(database, { AUTH_TEST_MODE: 'false', COMMUNITY_USER_AUTH_MODE: 'unverified' }));
+  assert.equal((await detail.json()).isSavedByCurrentUser, true);
+});

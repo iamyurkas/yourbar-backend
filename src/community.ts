@@ -139,13 +139,13 @@ async function publishedRecipe(database: D1Database, recipeId: string, user: Aut
 
 async function createSubmission(request: Request, env: CommunityEnv, database: D1Database): Promise<Response> {
   if (!enabled(env.COMMUNITY_SUBMISSIONS_ENABLED)) return jsonError("feature_disabled", "Community submissions are disabled", 404);
-  let user: AuthenticatedUser;
-  try { user = await requireUser(request, env); } catch (error) { return error instanceof AuthError ? error.response : jsonError("unauthorized", "Authentication is required", 401); }
   const body = await jsonBody(request, env);
   if (body instanceof Response) return body;
   if (!object(body)) return jsonError("validation_failed", "Request body must be an object", 400);
   const googleLogin = login(body.googleLogin);
   if (!googleLogin) return jsonError("validation_failed", "googleLogin is required for community submission", 400);
+  let user: AuthenticatedUser;
+  try { user = await requireUser(request, env, googleLogin); } catch (error) { return error instanceof AuthError ? error.response : jsonError("unauthorized", "A Community user identifier is required", 401); }
   const candidate = object(body.payload) ? body.payload : Object.fromEntries(Object.entries(body).filter(([key]) => key !== "googleLogin" && key !== "userId" && key !== "submitter_user_id"));
   const validation = validateRecipeSharePayloadV1(candidate);
   if (!validation.ok) return jsonError("validation_failed", "Recipe payload is invalid", 400, validation.issues);

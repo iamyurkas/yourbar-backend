@@ -65,6 +65,8 @@ export interface Env {
   AUTH_JWT_ISSUER?: string;
   AUTH_JWT_AUDIENCE?: string;
   AUTH_JWT_USER_ID_CLAIM?: string;
+  COMMUNITY_USER_AUTH_MODE?: string;
+  COMMUNITY_USER_ID_HEADER?: string;
   AUTH_TEST_MODE?: string;
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
