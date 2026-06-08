@@ -50,17 +50,20 @@ class MemoryD1 {
     } else if (sql.startsWith('INSERT INTO admin_moderation_events')) this.audit.push(v);
     else if (sql.startsWith('INSERT OR IGNORE INTO community_recipe_saves')) {
       const [recipeId, userId, createdAt] = v; const key = `${recipeId}:${userId}`;
-      if (!this.saves.has(key)) { this.saves.set(key, { recipeId, userId, createdAt }); const row = this.recipes.get(recipeId); row.save_count += 1; row.updated_at = createdAt; }
+      if (!this.saves.has(key)) this.saves.set(key, { recipeId, userId, createdAt });
     } else if (sql.startsWith('DELETE FROM community_recipe_saves')) {
       const [recipeId, userId] = v; const key = `${recipeId}:${userId}`;
-      if (this.saves.delete(key)) this.recipes.get(recipeId).save_count = Math.max(0, this.recipes.get(recipeId).save_count - 1);
+      this.saves.delete(key);
+    } else if (sql.startsWith('UPDATE community_recipes SET save_count = (SELECT COUNT(*)')) {
+      const [recipeId, updatedAt, targetId] = v; const row = this.recipes.get(targetId); row.save_count = [...this.saves.values()].filter((save) => save.recipeId === recipeId).length; row.updated_at = updatedAt;
+    } else if (sql.startsWith('UPDATE community_recipes SET rating_count = (SELECT COUNT(*)')) {
+      const [countRecipeId, sumRecipeId, updatedAt, targetId] = v; const row = this.recipes.get(targetId); const ratings = [...this.ratings.values()].filter((rating) => rating.recipeId === countRecipeId && rating.recipeId === sumRecipeId); row.rating_count = ratings.length; row.rating_sum = ratings.reduce((sum, rating) => sum + rating.rating, 0); row.updated_at = updatedAt;
     } else if (sql.startsWith('INSERT INTO community_recipe_ratings')) {
       const [recipeId, userId, rating, createdAt, updatedAt] = v; const key = `${recipeId}:${userId}`; const old = this.ratings.get(key); const row = this.recipes.get(recipeId);
-      if (old) row.rating_sum += rating - old.rating; else { row.rating_count += 1; row.rating_sum += rating; }
       this.ratings.set(key, { recipeId, userId, rating, createdAt: old?.createdAt ?? createdAt, updatedAt });
     } else if (sql.startsWith('DELETE FROM community_recipe_ratings')) {
       const [recipeId, userId] = v; const key = `${recipeId}:${userId}`; const old = this.ratings.get(key);
-      if (old) { this.ratings.delete(key); const row = this.recipes.get(recipeId); row.rating_count -= 1; row.rating_sum -= old.rating; }
+      if (old) this.ratings.delete(key);
     }
     return { success: true, meta: { changes: 1 } };
   }

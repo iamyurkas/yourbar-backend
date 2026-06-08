@@ -511,6 +511,15 @@ npm run migrate:staging
 
 Never run the production migration command without explicit approval.
 
+If Wrangler 4.91.0 previously failed `0001_community.sql` with `incomplete input`, pull the corrected migration first. The original trigger-based SQL exposed a Wrangler statement-splitting issue. D1 rolls back a failed migration and does not record it as applied, so verify and retry:
+
+```bash
+npx wrangler d1 migrations list yourbar-community-staging --env staging --remote
+npm run migrate:staging
+```
+
+The corrected migration contains only table/index statements. Atomic save/rating aggregates are maintained by transactional D1 `batch()` calls in the Worker instead of SQL triggers.
+
 ### Lightweight Community user identity (no JWT in staging)
 
 Staging intentionally uses `COMMUNITY_USER_AUTH_MODE=unverified` for faster iteration. This is an identity hint, not cryptographic authentication:
@@ -542,7 +551,7 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the te
 - `POST|DELETE /api/community/recipes/:id/save`
 - `PUT|DELETE /api/community/recipes/:id/rating`
 
-The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating aggregate counters are maintained by D1 triggers, making duplicate saves and rating replacement atomic with the user-specific row mutation.
+The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
 
 Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`. A separate admin UI was intentionally not exposed; the protected moderation API is ready for a dedicated frontend.
 

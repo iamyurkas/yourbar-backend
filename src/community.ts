@@ -259,8 +259,15 @@ async function saveRecipe(request: Request, env: CommunityEnv, database: D1Datab
   const existing = await publishedRecipe(database, recipeId, user);
   if (!existing) return jsonError("not_found", "Community recipe was not found", 404);
   const now = new Date().toISOString();
-  if (remove) await database.prepare("DELETE FROM community_recipe_saves WHERE recipe_id = ? AND user_id = ?").bind(recipeId, user.id).run();
-  else await database.prepare("INSERT OR IGNORE INTO community_recipe_saves (recipe_id, user_id, created_at) VALUES (?, ?, ?)").bind(recipeId, user.id, now).run();
+  const mutation = remove
+    ? database.prepare("DELETE FROM community_recipe_saves WHERE recipe_id = ? AND user_id = ?").bind(recipeId, user.id)
+    : database.prepare("INSERT OR IGNORE INTO community_recipe_saves (recipe_id, user_id, created_at) VALUES (?, ?, ?)").bind(recipeId, user.id, now);
+  await database.batch([
+    mutation,
+    database.prepare(`UPDATE community_recipes
+      SET save_count = (SELECT COUNT(*) FROM community_recipe_saves WHERE recipe_id = ?), updated_at = ?
+      WHERE id = ?`).bind(recipeId, now, recipeId),
+  ]);
   const updated = await publishedRecipe(database, recipeId, user);
   if (!updated) return jsonError("not_found", "Community recipe was not found", 404);
   if (remove) return jsonResponse({ recipeId, saved: false, saveCount: updated.save_count });
@@ -272,15 +279,24 @@ async function rateRecipe(request: Request, env: CommunityEnv, database: D1Datab
   let user: AuthenticatedUser;
   try { user = await requireUser(request, env); } catch (error) { return error instanceof AuthError ? error.response : jsonError("unauthorized", "Authentication is required", 401); }
   if (!await publishedRecipe(database, recipeId, user)) return jsonError("not_found", "Community recipe was not found", 404);
-  if (remove) await database.prepare("DELETE FROM community_recipe_ratings WHERE recipe_id = ? AND user_id = ?").bind(recipeId, user.id).run();
-  else {
+  const now = new Date().toISOString();
+  let mutation;
+  if (remove) {
+    mutation = database.prepare("DELETE FROM community_recipe_ratings WHERE recipe_id = ? AND user_id = ?").bind(recipeId, user.id);
+  } else {
     const body = await jsonBody(request, env);
     if (body instanceof Response) return body;
     if (!object(body) || !Number.isInteger(body.rating) || Number(body.rating) < 1 || Number(body.rating) > 5) return jsonError("validation_failed", "rating must be an integer from 1 to 5", 400);
-    const now = new Date().toISOString();
-    await database.prepare(`INSERT INTO community_recipe_ratings (recipe_id, user_id, rating, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(recipe_id, user_id) DO UPDATE SET rating=excluded.rating, updated_at=excluded.updated_at`).bind(recipeId, user.id, body.rating, now, now).run();
+    mutation = database.prepare(`INSERT INTO community_recipe_ratings (recipe_id, user_id, rating, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(recipe_id, user_id) DO UPDATE SET rating=excluded.rating, updated_at=excluded.updated_at`).bind(recipeId, user.id, body.rating, now, now);
   }
+  await database.batch([
+    mutation,
+    database.prepare(`UPDATE community_recipes SET
+      rating_count = (SELECT COUNT(*) FROM community_recipe_ratings WHERE recipe_id = ?),
+      rating_sum = COALESCE((SELECT SUM(rating) FROM community_recipe_ratings WHERE recipe_id = ?), 0),
+      updated_at = ? WHERE id = ?`).bind(recipeId, recipeId, now, recipeId),
+  ]);
   const updated = await publishedRecipe(database, recipeId, user);
   if (!updated) return jsonError("not_found", "Community recipe was not found", 404);
   return jsonResponse({ ratingCount: updated.rating_count, ratingSum: updated.rating_sum, averageRating: average(updated), currentUserRating: updated.current_user_rating ?? null });

@@ -1,5 +1,3 @@
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS community_submissions (
   id TEXT PRIMARY KEY,
   submitter_user_id TEXT NOT NULL,
@@ -69,30 +67,3 @@ CREATE TABLE IF NOT EXISTS admin_moderation_events (
   rejection_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_admin_moderation_submission ON admin_moderation_events(submission_id, created_at DESC);
-
-CREATE TRIGGER IF NOT EXISTS trg_community_save_insert
-AFTER INSERT ON community_recipe_saves
-BEGIN
-  UPDATE community_recipes SET save_count = save_count + 1, updated_at = NEW.created_at WHERE id = NEW.recipe_id;
-END;
-CREATE TRIGGER IF NOT EXISTS trg_community_save_delete
-AFTER DELETE ON community_recipe_saves
-BEGIN
-  UPDATE community_recipes SET save_count = MAX(save_count - 1, 0), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.recipe_id;
-END;
-CREATE TRIGGER IF NOT EXISTS trg_community_rating_insert
-AFTER INSERT ON community_recipe_ratings
-BEGIN
-  UPDATE community_recipes SET rating_count = rating_count + 1, rating_sum = rating_sum + NEW.rating, updated_at = NEW.updated_at WHERE id = NEW.recipe_id;
-END;
-CREATE TRIGGER IF NOT EXISTS trg_community_rating_update
-AFTER UPDATE OF rating ON community_recipe_ratings
-WHEN OLD.rating <> NEW.rating
-BEGIN
-  UPDATE community_recipes SET rating_sum = MAX(rating_sum + NEW.rating - OLD.rating, 0), updated_at = NEW.updated_at WHERE id = NEW.recipe_id;
-END;
-CREATE TRIGGER IF NOT EXISTS trg_community_rating_delete
-AFTER DELETE ON community_recipe_ratings
-BEGIN
-  UPDATE community_recipes SET rating_count = MAX(rating_count - 1, 0), rating_sum = MAX(rating_sum - OLD.rating, 0), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = OLD.recipe_id;
-END;
