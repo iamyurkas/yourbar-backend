@@ -25,3 +25,16 @@ test('staging config accepts enabled Community with a real-shaped D1 binding', a
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /enabled with D1/);
 });
+
+test('staging config rejects enabled administration without required Access secrets', async () => {
+  const result = await validate('COMMUNITY_FEATURE_ENABLED = "true"\nCOMMUNITY_ADMIN_ENABLED = "true"\n\n[[env.staging.d1_databases]]\nbinding = "YOURBAR_DB"\ndatabase_name = "yourbar-community-staging"\ndatabase_id = "00000000-0000-0000-0000-000000000001"');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /required Cloudflare Access secrets are not declared/);
+  assert.match(result.stderr, /CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD/);
+});
+
+test('staging config accepts enabled administration with required Access secrets', async () => {
+  const result = await validate('COMMUNITY_FEATURE_ENABLED = "true"\nCOMMUNITY_ADMIN_ENABLED = "true"\n\n[env.staging.secrets]\nrequired = ["CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD"]\n\n[[env.staging.d1_databases]]\nbinding = "YOURBAR_DB"\ndatabase_name = "yourbar-community-staging"\ndatabase_id = "00000000-0000-0000-0000-000000000001"');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /enabled with D1/);
+});

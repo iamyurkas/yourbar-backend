@@ -159,8 +159,12 @@ function validateAccessClaims(payload: JwtPayload, teamDomain: string, audiences
 async function verifyAccessJwt(token: string, env: AuthEnv): Promise<JwtPayload> {
   const domain = accessTeamDomain(env.CF_ACCESS_TEAM_DOMAIN);
   const audiences = accessAudiences(env.CF_ACCESS_AUD);
-  if (!domain || audiences.length === 0) {
-    throw new AccessVerificationError("access_not_configured", "Cloudflare Access validation is not configured; set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD", 503);
+  const missingBindings = [
+    !domain ? "CF_ACCESS_TEAM_DOMAIN" : null,
+    audiences.length === 0 ? "CF_ACCESS_AUD" : null,
+  ].filter((name): name is string => name !== null);
+  if (missingBindings.length > 0) {
+    throw new AccessVerificationError("access_not_configured", `Cloudflare Access validation is not configured; missing Worker binding${missingBindings.length === 1 ? "" : "s"}: ${missingBindings.join(", ")}`, 503);
   }
   const parts = token.split(".");
   if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
@@ -173,15 +177,22 @@ async function verifyAccessJwt(token: string, env: AuthEnv): Promise<JwtPayload>
   }
   let accessKeys = accessKeysByDomain.get(domain);
   if (!accessKeys || accessKeys.expiresAt < Date.now()) {
+    const certsUrl = `https://${domain}/cdn-cgi/access/certs`;
     let response: Response;
-    try { response = await fetch(`https://${domain}/cdn-cgi/access/certs`); } catch {
-      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not load Cloudflare Access signing keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    try { response = await fetch(certsUrl); } catch {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not reach the Cloudflare Access signing-key endpoint; verify CF_ACCESS_TEAM_DOMAIN and open /cdn-cgi/access/certs on that domain", 503);
     }
     if (!response.ok) {
-      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not load Cloudflare Access signing keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+      throw new AccessVerificationError("access_signing_keys_unavailable", `Cloudflare Access signing-key endpoint returned HTTP ${response.status}; verify CF_ACCESS_TEAM_DOMAIN`, 503);
     }
-    const body = await response.json() as { keys?: JsonWebKey[] };
-    accessKeys = { keys: body.keys ?? [], expiresAt: Date.now() + 3_600_000 };
+    let body: { keys?: JsonWebKey[] };
+    try { body = await response.json() as { keys?: JsonWebKey[] }; } catch {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Cloudflare Access signing-key endpoint did not return JSON; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    }
+    if (!Array.isArray(body.keys) || body.keys.length === 0) {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Cloudflare Access signing-key endpoint returned no keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    }
+    accessKeys = { keys: body.keys, expiresAt: Date.now() + 3_600_000 };
     accessKeysByDomain.set(domain, accessKeys);
   }
   const jwk = accessKeys.keys.find((candidate) => (candidate as JsonWebKey & { kid?: string }).kid === header.kid);

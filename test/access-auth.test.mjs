@@ -81,3 +81,62 @@ test('Access authentication validates issuer and accepts comma-separated audienc
 
   assert.deepEqual(user, { id: 'admin-1', email: 'admin@example.com' });
 });
+
+test('Access authentication identifies the missing Worker binding without exposing values', async () => {
+  const fixture = await accessFixture();
+  const request = new Request('https://staging-api.yourbar.app/api/admin/community/submissions', {
+    headers: { 'Cf-Access-Jwt-Assertion': fixture.token },
+  });
+
+  const missingAudience = await errorBody(requireAdmin(request.clone(), {
+    CF_ACCESS_TEAM_DOMAIN: 'your-team.cloudflareaccess.com',
+  }));
+  assert.equal(missingAudience.status, 503);
+  assert.deepEqual(missingAudience.body, {
+    error: {
+      code: 'access_not_configured',
+      message: 'Cloudflare Access validation is not configured; missing Worker binding: CF_ACCESS_AUD',
+    },
+  });
+
+  const missingBoth = await errorBody(requireAdmin(request.clone(), {}));
+  assert.equal(missingBoth.status, 503);
+  assert.deepEqual(missingBoth.body, {
+    error: {
+      code: 'access_not_configured',
+      message: 'Cloudflare Access validation is not configured; missing Worker bindings: CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD',
+    },
+  });
+});
+
+test('Access authentication distinguishes signing-key endpoint failures', async (t) => {
+  const fixture = await accessFixture();
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const request = new Request('https://staging-api.yourbar.app/api/admin/community/submissions', {
+    headers: { 'Cf-Access-Jwt-Assertion': fixture.token },
+  });
+  globalThis.fetch = async () => new Response('not found', { status: 404 });
+  const notFound = await errorBody(requireAdmin(request.clone(), {
+    CF_ACCESS_TEAM_DOMAIN: 'missing-team.cloudflareaccess.com',
+    CF_ACCESS_AUD: 'correct-audience',
+  }));
+  assert.equal(notFound.status, 503);
+  assert.equal(notFound.body.error.message, 'Cloudflare Access signing-key endpoint returned HTTP 404; verify CF_ACCESS_TEAM_DOMAIN');
+
+  globalThis.fetch = async () => new Response('<html>not JSON</html>', { headers: { 'Content-Type': 'text/html' } });
+  const invalidJson = await errorBody(requireAdmin(request.clone(), {
+    CF_ACCESS_TEAM_DOMAIN: 'html-team.cloudflareaccess.com',
+    CF_ACCESS_AUD: 'correct-audience',
+  }));
+  assert.equal(invalidJson.status, 503);
+  assert.equal(invalidJson.body.error.message, 'Cloudflare Access signing-key endpoint did not return JSON; verify CF_ACCESS_TEAM_DOMAIN');
+
+  globalThis.fetch = async () => Response.json({ keys: [] });
+  const noKeys = await errorBody(requireAdmin(request.clone(), {
+    CF_ACCESS_TEAM_DOMAIN: 'empty-team.cloudflareaccess.com',
+    CF_ACCESS_AUD: 'correct-audience',
+  }));
+  assert.equal(noKeys.status, 503);
+  assert.equal(noKeys.body.error.message, 'Cloudflare Access signing-key endpoint returned no keys; verify CF_ACCESS_TEAM_DOMAIN');
+});

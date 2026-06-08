@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "inspect:staging-secrets": "wrangler secret list --env staging --format pretty",
     "deploy:staging": "npm run validate:staging && wrangler deploy --env staging",
     "deploy:prod": "wrangler deploy",
     "build": "tsc",

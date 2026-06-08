@@ -567,12 +567,41 @@ In Cloudflare One, create one **Self-hosted** Access application with the same a
 - `staging-api.yourbar.app/admin/*`
 - `staging-api.yourbar.app/api/admin/community/*`
 
-Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`; after changing staging variables, redeploy the staging Worker. Sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
+Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Store both as Worker secrets so Wrangler preserves them across deployments:
+
+```bash
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging
+npx wrangler secret put CF_ACCESS_AUD --env staging
+```
+
+Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`. Plain-text variables added only in the Cloudflare dashboard can also be removed by a later `wrangler deploy`, because the Wrangler configuration is the default source of truth. The staging config therefore declares both Access values as required secrets: future deployments fail before publishing if either is absent. After setting them and deploying, sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
+
+Verify the remote staging bindings before troubleshooting the JWT itself:
+
+```bash
+npm run inspect:staging-secrets
+# Equivalent command:
+npx wrangler secret list --env staging --format pretty
+```
+
+The output must contain both exact, case-sensitive names:
+
+- `CF_ACCESS_TEAM_DOMAIN`
+- `CF_ACCESS_AUD`
+
+Wrangler intentionally never prints secret values; `Secret Name: ...` is the complete and expected output. Your screenshot therefore confirms that both names exist in the staging Worker. If the API still returns `access_not_configured`, deploy the version with the more specific diagnostic and check which binding it reports as missing. Also confirm that `staging-api.yourbar.app` is attached to `yourbar-share-api-staging`, not `yourbar-share-api`, under **Workers & Pages → yourbar-share-api-staging → Settings → Domains & Routes**. In the dashboard, the bindings themselves are under **Workers & Pages → yourbar-share-api-staging → Settings → Variables and Secrets**. If both bindings reach the Worker but a later error reports an audience or issuer mismatch, overwrite the corresponding secret with the exact value from the Access application.
 
 Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
 
 - `access_token_audience_mismatch`: copy **Application Audience (AUD) Tag** from the same Access application that covers the admin API into staging `CF_ACCESS_AUD`.
 - `access_token_issuer_mismatch` or `access_signing_key_mismatch`: set staging `CF_ACCESS_TEAM_DOMAIN` to the team domain shown in Zero Trust settings, without a path (for example `your-team.cloudflareaccess.com`).
+- `access_signing_keys_unavailable`: copy the exact **Team domain** from **Zero Trust → Settings → Team name and domain**, then test its public key endpoint before updating the secret. It must be a `*.cloudflareaccess.com` domain, not the protected application hostname:
+
+  ```powershell
+  Invoke-RestMethod https://YOUR-TEAM.cloudflareaccess.com/cdn-cgi/access/certs | ConvertTo-Json -Depth 4
+  ```
+
+  A correct endpoint returns JSON with a non-empty `keys` array. HTTP 404, DNS failure, an HTML page, or an empty key list means the team domain is incorrect. Once the endpoint works, run `npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging` with only the hostname (no `https://`, path, quotes, or trailing slash), then refresh the admin page.
 - `access_token_expired`: sign out, remove the site's `CF_Authorization` cookie, and sign in again.
 - `access_not_configured`: one or both staging Worker variables are absent.
 

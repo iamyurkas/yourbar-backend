@@ -22,6 +22,13 @@ const submissionsEnabled = flag("COMMUNITY_SUBMISSIONS_ENABLED") === "true";
 const adminEnabled = flag("COMMUNITY_ADMIN_ENABLED") === "true";
 const feedEnabled = flag("COMMUNITY_PUBLIC_FEED_ENABLED") === "true";
 const hasD1Binding = new RegExp(`^\\[\\[${environment === "staging" ? "env\\.staging\\." : ""}d1_databases\\]\\][\\s\\S]*?^binding\\s*=\\s*"YOURBAR_DB"`, "m").test(section);
+const secretsSectionName = environment === "staging" ? "env.staging.secrets" : "secrets";
+const secretsMarker = `[${secretsSectionName}]`;
+const secretsStart = section.indexOf(secretsMarker);
+const secretsEnd = secretsStart < 0 ? -1 : section.indexOf("\n[", secretsStart + secretsMarker.length);
+const secretsSection = secretsStart < 0 ? "" : section.slice(secretsStart, secretsEnd < 0 ? undefined : secretsEnd);
+const requiredSecrets = new Set(secretsSection.match(/"([^"]+)"/g)?.map((value) => value.slice(1, -1)) ?? []);
+const missingAdminSecrets = ["CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD"].filter((name) => !requiredSecrets.has(name));
 
 const enabledFlags = [
   ["COMMUNITY_FEATURE_ENABLED", communityEnabled],
@@ -38,6 +45,12 @@ if (!communityEnabled && enabledFlags.length > 0) {
 if (communityEnabled && !hasD1Binding) {
   console.error(`${environment}: Community is enabled but the YOURBAR_DB D1 binding is missing.`);
   console.error(`Add a real [[${environment === "staging" ? "env.staging." : ""}d1_databases]] binding and apply migrations before enabling Community.`);
+  process.exit(1);
+}
+
+if (adminEnabled && missingAdminSecrets.length > 0) {
+  console.error(`${environment}: Community administration is enabled but required Cloudflare Access secrets are not declared: ${missingAdminSecrets.join(", ")}.`);
+  console.error(`Declare them in [${environment === "staging" ? "env.staging.secrets" : "secrets"}] so Wrangler rejects deployments where Access validation is not configured.`);
   process.exit(1);
 }
 
