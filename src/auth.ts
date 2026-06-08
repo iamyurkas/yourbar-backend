@@ -177,15 +177,22 @@ async function verifyAccessJwt(token: string, env: AuthEnv): Promise<JwtPayload>
   }
   let accessKeys = accessKeysByDomain.get(domain);
   if (!accessKeys || accessKeys.expiresAt < Date.now()) {
+    const certsUrl = `https://${domain}/cdn-cgi/access/certs`;
     let response: Response;
-    try { response = await fetch(`https://${domain}/cdn-cgi/access/certs`); } catch {
-      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not load Cloudflare Access signing keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    try { response = await fetch(certsUrl); } catch {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not reach the Cloudflare Access signing-key endpoint; verify CF_ACCESS_TEAM_DOMAIN and open /cdn-cgi/access/certs on that domain", 503);
     }
     if (!response.ok) {
-      throw new AccessVerificationError("access_signing_keys_unavailable", "Could not load Cloudflare Access signing keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+      throw new AccessVerificationError("access_signing_keys_unavailable", `Cloudflare Access signing-key endpoint returned HTTP ${response.status}; verify CF_ACCESS_TEAM_DOMAIN`, 503);
     }
-    const body = await response.json() as { keys?: JsonWebKey[] };
-    accessKeys = { keys: body.keys ?? [], expiresAt: Date.now() + 3_600_000 };
+    let body: { keys?: JsonWebKey[] };
+    try { body = await response.json() as { keys?: JsonWebKey[] }; } catch {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Cloudflare Access signing-key endpoint did not return JSON; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    }
+    if (!Array.isArray(body.keys) || body.keys.length === 0) {
+      throw new AccessVerificationError("access_signing_keys_unavailable", "Cloudflare Access signing-key endpoint returned no keys; verify CF_ACCESS_TEAM_DOMAIN", 503);
+    }
+    accessKeys = { keys: body.keys, expiresAt: Date.now() + 3_600_000 };
     accessKeysByDomain.set(domain, accessKeys);
   }
   const jwk = accessKeys.keys.find((candidate) => (candidate as JsonWebKey & { kid?: string }).kid === header.kid);

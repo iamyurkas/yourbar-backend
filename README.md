@@ -595,6 +595,13 @@ Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and 
 
 - `access_token_audience_mismatch`: copy **Application Audience (AUD) Tag** from the same Access application that covers the admin API into staging `CF_ACCESS_AUD`.
 - `access_token_issuer_mismatch` or `access_signing_key_mismatch`: set staging `CF_ACCESS_TEAM_DOMAIN` to the team domain shown in Zero Trust settings, without a path (for example `your-team.cloudflareaccess.com`).
+- `access_signing_keys_unavailable`: copy the exact **Team domain** from **Zero Trust → Settings → Team name and domain**, then test its public key endpoint before updating the secret. It must be a `*.cloudflareaccess.com` domain, not the protected application hostname:
+
+  ```powershell
+  Invoke-RestMethod https://YOUR-TEAM.cloudflareaccess.com/cdn-cgi/access/certs | ConvertTo-Json -Depth 4
+  ```
+
+  A correct endpoint returns JSON with a non-empty `keys` array. HTTP 404, DNS failure, an HTML page, or an empty key list means the team domain is incorrect. Once the endpoint works, run `npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging` with only the hostname (no `https://`, path, quotes, or trailing slash), then refresh the admin page.
 - `access_token_expired`: sign out, remove the site's `CF_Authorization` cookie, and sign in again.
 - `access_not_configured`: one or both staging Worker variables are absent.
 
