@@ -584,12 +584,12 @@ npm run inspect:staging-secrets
 npx wrangler secret list --env staging --format pretty
 ```
 
-The output must be for Worker `yourbar-share-api-staging` and must contain both exact, case-sensitive names with type `secret_text`:
+The output must contain both exact, case-sensitive names:
 
 - `CF_ACCESS_TEAM_DOMAIN`
 - `CF_ACCESS_AUD`
 
-Secret values cannot be read back from Cloudflare. If both names are present but the API still returns `access_not_configured`, confirm that `staging-api.yourbar.app` is attached to `yourbar-share-api-staging`, not `yourbar-share-api`, under **Workers & Pages → yourbar-share-api-staging → Settings → Domains & Routes**. In the dashboard, the bindings themselves are under **Workers & Pages → yourbar-share-api-staging → Settings → Variables and Secrets**. If the names are present but a later error reports an audience or issuer mismatch, overwrite the corresponding secret with the exact value from the Access application.
+Wrangler intentionally never prints secret values; `Secret Name: ...` is the complete and expected output. Your screenshot therefore confirms that both names exist in the staging Worker. If the API still returns `access_not_configured`, deploy the version with the more specific diagnostic and check which binding it reports as missing. Also confirm that `staging-api.yourbar.app` is attached to `yourbar-share-api-staging`, not `yourbar-share-api`, under **Workers & Pages → yourbar-share-api-staging → Settings → Domains & Routes**. In the dashboard, the bindings themselves are under **Workers & Pages → yourbar-share-api-staging → Settings → Variables and Secrets**. If both bindings reach the Worker but a later error reports an audience or issuer mismatch, overwrite the corresponding secret with the exact value from the Access application.
 
 Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
 

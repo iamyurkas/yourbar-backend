@@ -159,8 +159,12 @@ function validateAccessClaims(payload: JwtPayload, teamDomain: string, audiences
 async function verifyAccessJwt(token: string, env: AuthEnv): Promise<JwtPayload> {
   const domain = accessTeamDomain(env.CF_ACCESS_TEAM_DOMAIN);
   const audiences = accessAudiences(env.CF_ACCESS_AUD);
-  if (!domain || audiences.length === 0) {
-    throw new AccessVerificationError("access_not_configured", "Cloudflare Access validation is not configured; set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD", 503);
+  const missingBindings = [
+    !domain ? "CF_ACCESS_TEAM_DOMAIN" : null,
+    audiences.length === 0 ? "CF_ACCESS_AUD" : null,
+  ].filter((name): name is string => name !== null);
+  if (missingBindings.length > 0) {
+    throw new AccessVerificationError("access_not_configured", `Cloudflare Access validation is not configured; missing Worker binding${missingBindings.length === 1 ? "" : "s"}: ${missingBindings.join(", ")}`, 503);
   }
   const parts = token.split(".");
   if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {

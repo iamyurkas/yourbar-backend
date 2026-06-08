@@ -81,3 +81,30 @@ test('Access authentication validates issuer and accepts comma-separated audienc
 
   assert.deepEqual(user, { id: 'admin-1', email: 'admin@example.com' });
 });
+
+test('Access authentication identifies the missing Worker binding without exposing values', async () => {
+  const fixture = await accessFixture();
+  const request = new Request('https://staging-api.yourbar.app/api/admin/community/submissions', {
+    headers: { 'Cf-Access-Jwt-Assertion': fixture.token },
+  });
+
+  const missingAudience = await errorBody(requireAdmin(request.clone(), {
+    CF_ACCESS_TEAM_DOMAIN: 'your-team.cloudflareaccess.com',
+  }));
+  assert.equal(missingAudience.status, 503);
+  assert.deepEqual(missingAudience.body, {
+    error: {
+      code: 'access_not_configured',
+      message: 'Cloudflare Access validation is not configured; missing Worker binding: CF_ACCESS_AUD',
+    },
+  });
+
+  const missingBoth = await errorBody(requireAdmin(request.clone(), {}));
+  assert.equal(missingBoth.status, 503);
+  assert.deepEqual(missingBoth.body, {
+    error: {
+      code: 'access_not_configured',
+      message: 'Cloudflare Access validation is not configured; missing Worker bindings: CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD',
+    },
+  });
+});
