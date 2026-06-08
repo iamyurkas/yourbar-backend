@@ -557,7 +557,7 @@ Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 
 ### Community moderation UI
 
-The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with a required reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
 
 The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
 

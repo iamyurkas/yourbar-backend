@@ -134,11 +134,13 @@ test('submission stores trusted auth id and author Google login as pending', asy
   assert.equal(created.status, 'pending'); assert.equal(created.googleLogin, 'author@gmail.com'); assert.equal(row.author_google_login, 'author@gmail.com'); assert.equal(row.submitter_user_id, 'user-1');
 });
 
-test('admin moderation is protected and reject never publishes', async () => {
+test('admin moderation is protected and reject without a reason never publishes', async () => {
   const database = new MemoryD1(); const created = await submit(database);
   const forbidden = await api(database, `/api/admin/community/submissions/${created.id}`, { method: 'PATCH', headers: userHeaders(), body: JSON.stringify({ action: 'approve' }) });
   assert.equal(forbidden.status, 401);
   const rejected = await moderate(database, created.id, 'reject'); assert.equal(rejected.status, 200);
+  assert.equal((await rejected.json()).rejectionReason, null);
+  assert.equal(database.submissions.get(created.id).rejection_reason, null);
   const feed = await api(database, '/api/community/recipes'); assert.deepEqual((await feed.json()).items, []); assert.equal(database.audit.length, 1);
 });
 
