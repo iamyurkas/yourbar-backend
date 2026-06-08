@@ -553,7 +553,13 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the te
 
 The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
 
-Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`. A separate admin UI was intentionally not exposed; the protected moderation API is ready for a dedicated frontend.
+Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
+
+### Community moderation UI
+
+The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with a required reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+
+Protect both `/admin*` and `/api/admin/community/*` with the same Cloudflare Access policy. The Worker still validates the Access JWT for every moderation API request; protecting the page route prevents unauthorized visitors from seeing the internal workspace shell. Start with `https://staging-api.yourbar.app/admin` and do not expose a production admin route until the production Community rollout is explicitly approved.
 
 ### Local verification checklist
 
