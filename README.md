@@ -567,7 +567,14 @@ In Cloudflare One, create one **Self-hosted** Access application with the same a
 - `staging-api.yourbar.app/admin/*`
 - `staging-api.yourbar.app/api/admin/community/*`
 
-Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`; after changing staging variables, redeploy the staging Worker. Sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
+Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Store both as Worker secrets so Wrangler preserves them across deployments:
+
+```bash
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging
+npx wrangler secret put CF_ACCESS_AUD --env staging
+```
+
+Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`. Plain-text variables added only in the Cloudflare dashboard can also be removed by a later `wrangler deploy`, because the Wrangler configuration is the default source of truth. The staging config therefore declares both Access values as required secrets: future deployments fail before publishing if either is absent. After setting them and deploying, sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
 
 Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
 

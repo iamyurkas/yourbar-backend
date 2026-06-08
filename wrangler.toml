@@ -54,6 +54,9 @@ AUTH_JWT_USER_ID_CLAIM = "sub"
 COMMUNITY_USER_AUTH_MODE = "unverified"
 COMMUNITY_USER_ID_HEADER = "X-YourBar-Google-Login"
 
+[env.staging.secrets]
+required = ["CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD"]
+
 [[env.staging.kv_namespaces]]
 binding = "RECIPE_SHARES"
 id = "ed38cc29d8c04b9697c51e584247af0b"
