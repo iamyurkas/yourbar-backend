@@ -6,14 +6,16 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:staging": "npm run validate:staging && wrangler deploy --env staging",
     "deploy:prod": "wrangler deploy",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
-    "check": "npm run typecheck && npm test",
+    "check": "npm run validate:config && npm run typecheck && npm test",
     "generate-static-assets": "node tools/generate-static-assets.mjs",
-    "prebuild": "npm run generate-static-assets"
+    "prebuild": "npm run generate-static-assets",
+    "validate:config": "node tools/validate-community-config.mjs production && node tools/validate-community-config.mjs staging",
+    "validate:staging": "node tools/validate-community-config.mjs staging"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

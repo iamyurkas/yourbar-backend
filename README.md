@@ -487,7 +487,7 @@ Production defaults in `wrangler.toml` disable all Community behavior:
 - `COMMUNITY_ADMIN_ENABLED=false` gates moderation.
 - `COMMUNITY_PUBLIC_FEED_ENABLED=false` gates public list/detail reads.
 
-Staging defaults enable these flags, but routes still return `feature_disabled` until the staging `YOURBAR_DB` binding is configured. Community data is never stored in `RECIPE_SHARES` KV.
+Staging defaults keep these flags disabled until the staging `YOURBAR_DB` binding is configured and migrated. This prevents a deployment where routes are advertised as enabled but fail with `Community storage is not configured`. Community data is never stored in `RECIPE_SHARES` KV.
 
 ### Create and bind D1
 
@@ -501,7 +501,9 @@ npx wrangler d1 create yourbar-community-staging
 npx wrangler d1 create yourbar-community
 ```
 
-Copy the real staging ID into an `[[env.staging.d1_databases]]` block using binding `YOURBAR_DB`, database name `yourbar-community-staging`, and `migrations_dir = "migrations"`. Do not add a production binding until its real database exists. The commented templates at the bottom of `wrangler.toml` show the exact shape.
+Copy the real staging ID into an `[[env.staging.d1_databases]]` block using binding `YOURBAR_DB`, database name `yourbar-community-staging`, and `migrations_dir = "migrations"`. Apply the migration, and only then change the four staging Community flags to `true`. Do not add a production binding until its real database exists. The commented templates at the bottom of `wrangler.toml` show the exact shape.
+
+`npm run deploy:staging` now runs a configuration guard first. It refuses to deploy if Community is enabled without `YOURBAR_DB`, preventing the broken staging state where mobile receives `feature_disabled: Community storage is not configured`.
 
 Apply migrations to local or staging D1 only:
 
@@ -563,8 +565,9 @@ npm run check
 1. Use Worker `yourbar-share-api-staging`, `https://staging-api.yourbar.app`, staging KV, `yourbar-recipe-images-staging`, and the real staging D1 binding.
 2. Apply `migrations/0001_community.sql` to staging D1.
 3. Configure mobile JWT secrets and Cloudflare Access settings.
-4. Run `npm run deploy:staging` (never `npm run deploy`).
-5. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
+4. Set the four staging Community flags to `true` only after the binding and migration exist.
+5. Run `npm run deploy:staging` (never `npm run deploy`); its pre-deploy guard verifies that enabled Community has a D1 binding.
+6. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
 
 ### Production rollout checklist (manual approval required)
 
