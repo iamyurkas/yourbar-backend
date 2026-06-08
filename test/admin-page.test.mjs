@@ -29,6 +29,18 @@ test('admin moderation page is served at both canonical paths', async () => {
   }
 });
 
+
+test('admin page enables automatic test headers only in explicit test mode', async () => {
+  const enabled = await handleRequest(new Request('https://localhost/admin'), {
+    ...env(),
+    AUTH_TEST_MODE: 'true',
+  });
+  assert.match(await enabled.text(), /testAdminHeader:true/);
+
+  const disabled = await handleRequest(new Request('https://staging-api.yourbar.app/admin'), { ...env(), AUTH_TEST_MODE: 'true' });
+  assert.match(await disabled.text(), /testAdminHeader:false/);
+});
+
 test('admin page rejects non-GET methods', async () => {
   const response = await handleRequest(new Request('https://staging-api.yourbar.app/admin', { method: 'POST' }), env());
   assert.equal(response.status, 405);

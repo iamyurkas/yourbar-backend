@@ -559,7 +559,27 @@ Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 
 The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with a required reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
 
-Protect both `/admin*` and `/api/admin/community/*` with the same Cloudflare Access policy. The Worker still validates the Access JWT for every moderation API request; protecting the page route prevents unauthorized visitors from seeing the internal workspace shell. Start with `https://staging-api.yourbar.app/admin` and do not expose a production admin route until the production Community rollout is explicitly approved.
+The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
+
+In Cloudflare One, create one **Self-hosted** Access application with the same allow policy and these public hostnames/paths:
+
+- `staging-api.yourbar.app/admin` (the parent route must be listed explicitly)
+- `staging-api.yourbar.app/admin/*`
+- `staging-api.yourbar.app/api/admin/community/*`
+
+Then configure the staging Worker with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's `CF_ACCESS_AUD` audience tag. Sign in by reopening `https://staging-api.yourbar.app/admin`. Cloudflare will add `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker will validate its signature, audience, and expiration. Do not set `AUTH_TEST_MODE` on a deployed Worker.
+
+For a local-only preview without Cloudflare Access:
+
+```bash
+printf 'AUTH_TEST_MODE="true"\n' > .dev.vars.staging
+npx wrangler d1 migrations apply yourbar-community-staging --env staging --local
+npx wrangler dev --env staging
+```
+
+Open the local `/admin` URL printed by Wrangler. In this mode the page sends the existing test-admin headers automatically. The local D1 database starts empty, so submit a local Community recipe first if you want a populated moderation queue. `.dev.vars*` is git-ignored and must never be deployed.
+
+Start with staging and do not expose a production admin route until the production Community rollout is explicitly approved.
 
 ### Local verification checklist
 

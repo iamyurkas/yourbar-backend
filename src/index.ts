@@ -1673,7 +1673,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     } else if (path === "/admin" || path === "/admin/") {
       response = request.method === "GET"
         ? (env.COMMUNITY_FEATURE_ENABLED === "true" && env.COMMUNITY_ADMIN_ENABLED === "true"
-          ? adminPageResponse()
+          ? adminPageResponse({ testAdminHeader: env.AUTH_TEST_MODE === "true" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname) })
           : htmlResponse(renderNotFoundPage(), 404))
         : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else if (path === "/favicon.ico" || path.startsWith("/assets/")) {
