@@ -567,7 +567,16 @@ In Cloudflare One, create one **Self-hosted** Access application with the same a
 - `staging-api.yourbar.app/admin/*`
 - `staging-api.yourbar.app/api/admin/community/*`
 
-Then configure the staging Worker with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's `CF_ACCESS_AUD` audience tag. Sign in by reopening `https://staging-api.yourbar.app/admin`. Cloudflare will add `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker will validate its signature, audience, and expiration. Do not set `AUTH_TEST_MODE` on a deployed Worker.
+Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`; after changing staging variables, redeploy the staging Worker. Sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
+
+Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
+
+- `access_token_audience_mismatch`: copy **Application Audience (AUD) Tag** from the same Access application that covers the admin API into staging `CF_ACCESS_AUD`.
+- `access_token_issuer_mismatch` or `access_signing_key_mismatch`: set staging `CF_ACCESS_TEAM_DOMAIN` to the team domain shown in Zero Trust settings, without a path (for example `your-team.cloudflareaccess.com`).
+- `access_token_expired`: sign out, remove the site's `CF_Authorization` cookie, and sign in again.
+- `access_not_configured`: one or both staging Worker variables are absent.
+
+`CF_ACCESS_AUD` may contain a comma-separated list during an application migration, but normally it should contain exactly one audience tag. Do not set `AUTH_TEST_MODE` on a deployed Worker.
 
 For a local-only preview without Cloudflare Access:
 
