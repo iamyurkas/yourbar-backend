@@ -17,6 +17,7 @@ import {
   type RecipeShareRecord,
 } from "./storage.js";
 import { staticAssetResponse } from "./static-assets.js";
+import { adminPageResponse } from "./admin.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
@@ -1669,6 +1670,12 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? htmlResponse(renderHomePage(env))
         : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
+    } else if (path === "/admin" || path === "/admin/") {
+      response = request.method === "GET"
+        ? (env.COMMUNITY_FEATURE_ENABLED === "true" && env.COMMUNITY_ADMIN_ENABLED === "true"
+          ? adminPageResponse({ testAdminHeader: env.AUTH_TEST_MODE === "true" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname) })
+          : htmlResponse(renderNotFoundPage(), 404))
+        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else if (path === "/favicon.ico" || path.startsWith("/assets/")) {
       const assetResponse = staticAssetResponse(path);
       if (!assetResponse) response = jsonError("not_found", "Not found", 404);
