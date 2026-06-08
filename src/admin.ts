@@ -58,7 +58,7 @@ function adminStyles(): string {
     .detail { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr); }
     .detail-main { min-width:0; padding:25px; border-right:1px solid var(--line); }
     .detail-side { padding:25px; background:#fafcfb; }
-    .hero { position:relative; width:100%; height:clamp(230px,42vw,420px); margin-bottom:24px; border-radius:14px; overflow:hidden; background:linear-gradient(145deg,#dce9e0,#eef4f0); display:grid; place-items:center; color:#6f8778; font-size:48px; }
+    .hero { position:relative; width:100%; height:clamp(230px,42vw,420px); margin-bottom:24px; border-radius:14px; overflow:hidden; background:#fff; display:grid; place-items:center; color:#6f8778; font-size:48px; }
     .hero img,.ingredient-image img { position:absolute; inset:0; display:block; width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; object-position:center; }
     .ingredient-image img { padding:3px; }
     .detail h2 { margin:0 0 8px; font-family:Georgia,"Times New Roman",serif; font-size:34px; line-height:1.08; }
@@ -70,7 +70,7 @@ function adminStyles(): string {
     .ingredient { padding:11px 0; border-bottom:1px solid #edf1ee; display:flex; align-items:center; justify-content:space-between; gap:18px; }
     .ingredient:last-child { border-bottom:0; }
     .ingredient-content { min-width:0; flex:1; display:flex; align-items:center; gap:12px; }
-    .ingredient-image { position:relative; width:52px; height:52px; flex:none; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:linear-gradient(145deg,#eef4f0,#f8faf9); display:grid; place-items:center; color:#6f8778; font-size:21px; }
+    .ingredient-image { position:relative; width:52px; height:52px; flex:none; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:#fff; display:grid; place-items:center; color:#6f8778; font-size:21px; }
     .ingredient-info { min-width:0; }
     .ingredient-name { font-weight:700; }
     .ingredient small { display:block; margin-top:3px; color:var(--muted); }
