@@ -23,9 +23,13 @@ test('admin moderation page is served at both canonical paths', async () => {
     assert.match(html, /Review queue/);
     assert.match(html, /\/api\/admin\/community\/submissions/);
     assert.match(html, /Cloudflare Access/);
-    assert.match(html, /\.hero img \{ width:100%; height:100%; object-fit:contain; \}/);
-    assert.match(html, /\.ingredient-image img \{ width:100%; height:100%; object-fit:contain; \}/);
+    assert.match(html, /\.hero img,\.ingredient-image img \{ position:absolute; inset:0;[^}]+object-fit:contain; object-position:center; \}/);
+    assert.match(html, /\.hero \{ position:relative;/);
+    assert.match(html, /\.ingredient-image \{ position:relative;/);
     assert.match(html, /imageBox\(ingredient,'ingredient-image'\)/);
+    assert.match(html, /function inlineMarkup\(value\)/);
+    assert.match(html, /formattedNode\('p',\{class:'description'\}/);
+    assert.match(html, /formattedNode\('li',\{\},step\)/);
     const script = html.match(/<script nonce="[^"]+">([\s\S]+)<\/script>/)?.[1];
     assert.ok(script);
     assert.doesNotThrow(() => new Function(script));
