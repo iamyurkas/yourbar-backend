@@ -576,6 +576,21 @@ npx wrangler secret put CF_ACCESS_AUD --env staging
 
 Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`. Plain-text variables added only in the Cloudflare dashboard can also be removed by a later `wrangler deploy`, because the Wrangler configuration is the default source of truth. The staging config therefore declares both Access values as required secrets: future deployments fail before publishing if either is absent. After setting them and deploying, sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
 
+Verify the remote staging bindings before troubleshooting the JWT itself:
+
+```bash
+npm run inspect:staging-secrets
+# Equivalent command:
+npx wrangler secret list --env staging --format pretty
+```
+
+The output must be for Worker `yourbar-share-api-staging` and must contain both exact, case-sensitive names with type `secret_text`:
+
+- `CF_ACCESS_TEAM_DOMAIN`
+- `CF_ACCESS_AUD`
+
+Secret values cannot be read back from Cloudflare. If both names are present but the API still returns `access_not_configured`, confirm that `staging-api.yourbar.app` is attached to `yourbar-share-api-staging`, not `yourbar-share-api`, under **Workers & Pages → yourbar-share-api-staging → Settings → Domains & Routes**. In the dashboard, the bindings themselves are under **Workers & Pages → yourbar-share-api-staging → Settings → Variables and Secrets**. If the names are present but a later error reports an audience or issuer mismatch, overwrite the corresponding secret with the exact value from the Access application.
+
 Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
 
 - `access_token_audience_mismatch`: copy **Application Audience (AUD) Tag** from the same Access application that covers the admin API into staging `CF_ACCESS_AUD`.
