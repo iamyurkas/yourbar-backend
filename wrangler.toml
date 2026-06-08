@@ -12,6 +12,12 @@ CORS_ALLOWED_ORIGINS = "http://localhost:8081,https://yourbar.app,https://www.yo
 IMAGE_CLEANUP_BATCH_SIZE = "100"
 ANDROID_PACKAGE_NAME = "com.yourbarapp.free"
 ANDROID_SHA256_CERT_FINGERPRINTS = "BE:00:A6:2A:71:AB:5B:F1:17:F7:97:B2:74:1C:1E:03:1D:77:C4:81:FD:60:7E:22:C4:B0:45:7B:DD:79:6D:F7"
+COMMUNITY_FEATURE_ENABLED = "false"
+COMMUNITY_SUBMISSIONS_ENABLED = "false"
+COMMUNITY_ADMIN_ENABLED = "false"
+COMMUNITY_PUBLIC_FEED_ENABLED = "false"
+AUTH_JWT_USER_ID_CLAIM = "sub"
+COMMUNITY_USER_AUTH_MODE = "jwt"
 
 [[kv_namespaces]]
 binding = "RECIPE_SHARES"
@@ -40,6 +46,16 @@ CORS_ALLOWED_ORIGINS = "http://localhost:8081,https://yourbar.app,https://www.yo
 IMAGE_CLEANUP_BATCH_SIZE = "100"
 ANDROID_PACKAGE_NAME = "com.yourbarapp.free"
 ANDROID_SHA256_CERT_FINGERPRINTS = "BE:00:A6:2A:71:AB:5B:F1:17:F7:97:B2:74:1C:1E:03:1D:77:C4:81:FD:60:7E:22:C4:B0:45:7B:DD:79:6D:F7"
+COMMUNITY_FEATURE_ENABLED = "true"
+COMMUNITY_SUBMISSIONS_ENABLED = "true"
+COMMUNITY_ADMIN_ENABLED = "true"
+COMMUNITY_PUBLIC_FEED_ENABLED = "true"
+AUTH_JWT_USER_ID_CLAIM = "sub"
+COMMUNITY_USER_AUTH_MODE = "unverified"
+COMMUNITY_USER_ID_HEADER = "X-YourBar-Google-Login"
+
+[env.staging.secrets]
+required = ["CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD"]
 
 [[env.staging.kv_namespaces]]
 binding = "RECIPE_SHARES"
@@ -51,3 +67,16 @@ bucket_name = "yourbar-recipe-images-staging"
 
 [env.staging.triggers]
 crons = ["0 3 * * *"]
+# D1 is intentionally not bound until the real database IDs exist. Never put a
+# made-up production ID here. After creating the databases, add:
+# [[d1_databases]]
+# binding = "YOURBAR_DB"
+# database_name = "yourbar-community"
+# database_id = "<REAL_PRODUCTION_DATABASE_ID>"
+# migrations_dir = "migrations"
+#
+[[env.staging.d1_databases]]
+binding = "YOURBAR_DB"
+database_name = "yourbar-community-staging"
+database_id = "0ed05c0b-af0e-4791-ad59-e652ea6202a9"
+migrations_dir = "migrations"

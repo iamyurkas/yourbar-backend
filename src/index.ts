@@ -1,4 +1,7 @@
 import { generateRecipeId, isValidRecipeId } from "./ids.js";
+import { bytesChecksum, recipeChecksum } from "./checksum.js";
+export { recipeChecksum } from "./checksum.js";
+import { handleCommunityRequest } from "./community.js";
 import { corsPreflight, escapeHtml, htmlResponse, isJsonContentType, jsonError, jsonResponse, withCors } from "./http.js";
 import {
   deleteImageAccessRecords,
@@ -14,6 +17,7 @@ import {
   type RecipeShareRecord,
 } from "./storage.js";
 import { staticAssetResponse } from "./static-assets.js";
+import { adminPageResponse } from "./admin.js";
 import { validateRecipeSharePayloadV1, type Ingredient, type RecipeSharePayloadV1, type RecipeTag } from "./schema.js";
 
 type RecipeImageObject = {
@@ -53,6 +57,21 @@ export interface Env {
   ANDROID_SHA256_CERT_FINGERPRINTS?: string;
   APPLE_APP_SITE_ASSOCIATION_JSON?: string;
   ANDROID_ASSET_LINKS_JSON?: string;
+  YOURBAR_DB?: import("./d1.js").D1Database;
+  COMMUNITY_FEATURE_ENABLED?: string;
+  COMMUNITY_SUBMISSIONS_ENABLED?: string;
+  COMMUNITY_ADMIN_ENABLED?: string;
+  COMMUNITY_PUBLIC_FEED_ENABLED?: string;
+  AUTH_JWT_SECRET?: string;
+  AUTH_JWT_ISSUER?: string;
+  AUTH_JWT_AUDIENCE?: string;
+  AUTH_JWT_USER_ID_CLAIM?: string;
+  COMMUNITY_USER_AUTH_MODE?: string;
+  COMMUNITY_USER_ID_HEADER?: string;
+  AUTH_TEST_MODE?: string;
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
+  COMMUNITY_ADMIN_EMAILS?: string;
 }
 
 const SERVICE_NAME = "yourbar-share-api";
@@ -201,37 +220,6 @@ function recipeUrls(env: Env, id: string): { publicUrl: string; apiUrl: string }
 function imageObjectKeyFromChecksum(checksum: string, contentType: string): string {
   const extension = ALLOWED_IMAGE_TYPES[contentType] ?? "bin";
   return `${checksum}.${extension}`;
-}
-
-function canonicalizeForChecksum(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => canonicalizeForChecksum(item));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entryValue]) => entryValue !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entryValue]) => [key, canonicalizeForChecksum(entryValue)]),
-    );
-  }
-
-  return typeof value === "string" ? value.trim() : value;
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256Hex(value: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", value);
-  return bytesToHex(digest);
-}
-
-export async function recipeChecksum(recipe: unknown): Promise<string> {
-  const canonicalRecipe = JSON.stringify(canonicalizeForChecksum(recipe));
-  return sha256Hex(new TextEncoder().encode(canonicalRecipe));
 }
 
 function normalizeTextLines(value: string | string[] | undefined): string[] {
@@ -458,7 +446,7 @@ async function handlePostImage(request: Request, env: Env): Promise<Response> {
 
   const ttlSeconds = recipeTtlSeconds(env);
   const timestamps = retentionTimestamps(ttlSeconds);
-  const checksum = await sha256Hex(bytes);
+  const checksum = await bytesChecksum(bytes);
   const mappedKey = await getImageKeyByChecksum(env.RECIPE_SHARES, checksum);
   if (mappedKey) {
     const existing = await env.RECIPE_IMAGES.get(mappedKey);
@@ -1682,57 +1670,66 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       response = request.method === "GET"
         ? htmlResponse(renderHomePage(env))
         : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
+    } else if (path === "/admin" || path === "/admin/") {
+      response = request.method === "GET"
+        ? (env.COMMUNITY_FEATURE_ENABLED === "true" && env.COMMUNITY_ADMIN_ENABLED === "true"
+          ? adminPageResponse({ testAdminHeader: env.AUTH_TEST_MODE === "true" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname) })
+          : htmlResponse(renderNotFoundPage(), 404))
+        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
     } else if (path === "/favicon.ico" || path.startsWith("/assets/")) {
       const assetResponse = staticAssetResponse(path);
-      if (!assetResponse) {
-        response = jsonError("not_found", "Not found", 404);
-      } else if (request.method !== "GET") {
-        response = jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
-      } else {
-        response = assetResponse;
-      }
-    } else if (path === "/api/images") {
-      response = request.method === "POST"
-        ? await handlePostImage(request, env)
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "POST, OPTIONS" });
-    } else if (path === "/api/recipes") {
-      response = request.method === "POST"
-        ? await handlePostRecipe(request, env)
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "POST, OPTIONS" });
-    } else if (path.startsWith("/api/recipes/")) {
-      const id = path.slice("/api/recipes/".length);
-      response = request.method === "GET"
-        ? await handleGetRecipe(id, env)
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET, OPTIONS" });
-    } else if (path.startsWith("/images/")) {
-      const key = path.slice("/images/".length);
-      response = request.method === "GET"
-        ? await handleGetImage(key, env)
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
-    } else if (path.startsWith("/r/")) {
-      const id = path.slice("/r/".length);
-      response = request.method === "GET"
-        ? await handleRecipeLanding(id, env)
-        : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
-    } else if (path === "/.well-known/apple-app-site-association") {
-      response = request.method === "GET"
-        ? wellKnownJson(env.APPLE_APP_SITE_ASSOCIATION_JSON, appleAppSiteAssociation(env))
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
-    } else if (path === "/.well-known/assetlinks.json") {
-      response = request.method === "GET"
-        ? wellKnownJson(env.ANDROID_ASSET_LINKS_JSON, androidAssetLinks(env))
-        : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      if (!assetResponse) response = jsonError("not_found", "Not found", 404);
+      else if (request.method !== "GET") response = jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      else response = assetResponse;
     } else {
-      response = jsonError("not_found", "Not found", 404);
+      const communityResponse = await handleCommunityRequest(request, env, path, url);
+      if (communityResponse) {
+        response = communityResponse;
+      } else if (path === "/api/images") {
+        response = request.method === "POST"
+          ? await handlePostImage(request, env)
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "POST, OPTIONS" });
+      } else if (path === "/api/recipes") {
+        response = request.method === "POST"
+          ? await handlePostRecipe(request, env)
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "POST, OPTIONS" });
+      } else if (path.startsWith("/api/recipes/")) {
+        const recipeId = path.slice("/api/recipes/".length);
+        response = request.method === "GET"
+          ? await handleGetRecipe(recipeId, env)
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET, OPTIONS" });
+      } else if (path.startsWith("/images/")) {
+        const key = path.slice("/images/".length);
+        response = request.method === "GET"
+          ? await handleGetImage(key, env)
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      } else if (path.startsWith("/r/")) {
+        const recipeId = path.slice("/r/".length);
+        response = request.method === "GET"
+          ? await handleRecipeLanding(recipeId, env)
+          : htmlResponse(renderNotFoundPage(), 405, { Allow: "GET" });
+      } else if (path === "/.well-known/apple-app-site-association") {
+        response = request.method === "GET"
+          ? wellKnownJson(env.APPLE_APP_SITE_ASSOCIATION_JSON, appleAppSiteAssociation(env))
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      } else if (path === "/.well-known/assetlinks.json") {
+        response = request.method === "GET"
+          ? wellKnownJson(env.ANDROID_ASSET_LINKS_JSON, androidAssetLinks(env))
+          : jsonError("method_not_allowed", "Method not allowed", 405, undefined, { Allow: "GET" });
+      } else {
+        response = request.method === "GET"
+          ? htmlResponse(renderNotFoundPage(), 404)
+          : jsonError("not_found", "Route not found", 404);
+      }
     }
 
     return path.startsWith("/api/") ? withCors(response, request, env.CORS_ALLOWED_ORIGINS) : response;
-  } catch {
-    const response = jsonError("internal_error", "Internal server error", 500);
+  } catch (error) {
+    console.error("Unhandled request error", error);
+    const response = jsonError("internal_error", "An unexpected error occurred", 500);
     return path.startsWith("/api/") ? withCors(response, request, env.CORS_ALLOWED_ORIGINS) : response;
   }
 }
-
 
 export async function scheduled(_controller: unknown, env: Env): Promise<void> {
   if (!env.RECIPE_IMAGES) return;

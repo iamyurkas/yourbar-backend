@@ -473,3 +473,174 @@ If you need a fully custom Android document, set `ANDROID_ASSET_LINKS_JSON`; it 
 - Image transformation and thumbnail generation for R2 uploads.
 - Signed delete/update token returned at creation time.
 - Privacy-preserving analytics for share creation and imports.
+
+## Community recipes (D1, moderated, feature-flagged)
+
+Community routes are additive and reuse the complete `RecipeSharePayloadV1.recipe` payload for list, detail, save, and import responses. Personal share routes (`POST /api/recipes`, `GET /api/recipes/:id`, `/r/:id`, and `POST /api/images`) remain KV/R2-backed and are independent of Community.
+
+### Safety and feature flags
+
+Production defaults in `wrangler.toml` disable all Community behavior:
+
+- `COMMUNITY_FEATURE_ENABLED=false` is the master switch; Community API routes return `404 feature_disabled`.
+- `COMMUNITY_SUBMISSIONS_ENABLED=false` gates new submissions.
+- `COMMUNITY_ADMIN_ENABLED=false` gates moderation.
+- `COMMUNITY_PUBLIC_FEED_ENABLED=false` gates public list/detail reads.
+
+Staging is configured with the dedicated `yourbar-community-staging` D1 binding and enables Community flags. The migration must be applied before deploying that configuration. Community data is never stored in `RECIPE_SHARES` KV.
+
+### Create and bind D1
+
+The staging database already exists as `yourbar-community-staging` and is bound only under `env.staging`. Use Node 22+ for Wrangler commands. Create a production database only as part of an explicitly approved production rollout:
+
+```bash
+# Production only, after explicit approval:
+npx wrangler d1 create yourbar-community
+```
+
+The real staging binding is committed under `[[env.staging.d1_databases]]`. Do not add a production binding until its real database exists and production rollout is explicitly approved.
+
+A Worker deploy is **not required before a D1 migration**. Wrangler reads the D1 binding/database name from `wrangler.toml`, so the correct first-time order is: apply the staging migration, then deploy the staging Worker. `npm run deploy:staging` runs a configuration guard and refuses enabled Community without `YOURBAR_DB`.
+
+Apply migrations to local or staging D1 only:
+
+```bash
+npx wrangler d1 migrations apply yourbar-community-staging --local
+npm run migrate:staging
+```
+
+Never run the production migration command without explicit approval.
+
+If Wrangler 4.91.0 previously failed `0001_community.sql` with `incomplete input`, pull the corrected migration first. The original trigger-based SQL exposed a Wrangler statement-splitting issue. D1 rolls back a failed migration and does not record it as applied, so verify and retry:
+
+```bash
+npx wrangler d1 migrations list yourbar-community-staging --env staging --remote
+npm run migrate:staging
+```
+
+The corrected migration contains only table/index statements. Atomic save/rating aggregates are maintained by transactional D1 `batch()` calls in the Worker instead of SQL triggers.
+
+### Lightweight Community user identity (no JWT in staging)
+
+Staging intentionally uses `COMMUNITY_USER_AUTH_MODE=unverified` for faster iteration. This is an identity hint, not cryptographic authentication:
+
+- Submission uses the required `googleLogin` body field as both the author identifier and the user key; no JWT or extra header is required.
+- Save/rating and optional feed personalization use `X-YourBar-Google-Login: user@gmail.com` because those requests do not otherwise contain `googleLogin`.
+- `userId` and `submitter_user_id` body fields remain ignored.
+- Admin moderation is **not** opened by this mode and still requires Cloudflare Access.
+
+This mode allows impersonation if somebody knows another user's email. That trade-off is explicit and acceptable only for the lightweight Community rollout. Production remains configured with `COMMUNITY_USER_AUTH_MODE=jwt` and all Community flags disabled. If stronger identity is needed later, configure `AUTH_JWT_SECRET`, optional issuer/audience settings, and switch the environment to `COMMUNITY_USER_AUTH_MODE=jwt`.
+
+### Cloudflare Access for administrators
+
+Protect `/api/admin/community/*` at Cloudflare Access and configure:
+
+- `CF_ACCESS_TEAM_DOMAIN` (for example `team.cloudflareaccess.com`)
+- `CF_ACCESS_AUD` (the Access application audience tag)
+- `COMMUNITY_ADMIN_EMAILS` (optional comma-separated second allow-list)
+
+The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the team JWKS and checks its audience/expiration. Google login values are never accepted for admin authorization.
+
+### Community API
+
+- `POST /api/community/submissions`
+- `GET /api/admin/community/submissions`
+- `GET|PATCH /api/admin/community/submissions/:id`
+- `GET /api/community/recipes`
+- `GET /api/community/recipes/:id`
+- `POST|DELETE /api/community/recipes/:id/save`
+- `PUT|DELETE /api/community/recipes/:id/rating`
+
+The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
+
+Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
+
+### Community moderation UI
+
+The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+
+The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
+
+In Cloudflare One, create one **Self-hosted** Access application with the same allow policy and these public hostnames/paths:
+
+- `staging-api.yourbar.app/admin` (the parent route must be listed explicitly)
+- `staging-api.yourbar.app/admin/*`
+- `staging-api.yourbar.app/api/admin/community/*`
+
+Then configure the **staging Worker environment** with `CF_ACCESS_TEAM_DOMAIN` (for example `your-team.cloudflareaccess.com`) and that Access application's exact `CF_ACCESS_AUD` audience tag. Store both as Worker secrets so Wrangler preserves them across deployments:
+
+```bash
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging
+npx wrangler secret put CF_ACCESS_AUD --env staging
+```
+
+Variables configured only for the production Worker are not inherited by `yourbar-share-api-staging`. Plain-text variables added only in the Cloudflare dashboard can also be removed by a later `wrangler deploy`, because the Wrangler configuration is the default source of truth. The staging config therefore declares both Access values as required secrets: future deployments fail before publishing if either is absent. After setting them and deploying, sign out of Access or clear the `CF_Authorization` cookie, then reopen `https://staging-api.yourbar.app/admin` and sign in again.
+
+Verify the remote staging bindings before troubleshooting the JWT itself:
+
+```bash
+npm run inspect:staging-secrets
+# Equivalent command:
+npx wrangler secret list --env staging --format pretty
+```
+
+The output must contain both exact, case-sensitive names:
+
+- `CF_ACCESS_TEAM_DOMAIN`
+- `CF_ACCESS_AUD`
+
+Wrangler intentionally never prints secret values; `Secret Name: ...` is the complete and expected output. Your screenshot therefore confirms that both names exist in the staging Worker. If the API still returns `access_not_configured`, deploy the version with the more specific diagnostic and check which binding it reports as missing. Also confirm that `staging-api.yourbar.app` is attached to `yourbar-share-api-staging`, not `yourbar-share-api`, under **Workers & Pages → yourbar-share-api-staging → Settings → Domains & Routes**. In the dashboard, the bindings themselves are under **Workers & Pages → yourbar-share-api-staging → Settings → Variables and Secrets**. If both bindings reach the Worker but a later error reports an audience or issuer mismatch, overwrite the corresponding secret with the exact value from the Access application.
+
+Cloudflare adds `Cf-Access-Jwt-Assertion` to authenticated origin requests, and the Worker validates its signature, issuer, audience, and expiration. The UI now reports the failed validation category:
+
+- `access_token_audience_mismatch`: copy **Application Audience (AUD) Tag** from the same Access application that covers the admin API into staging `CF_ACCESS_AUD`.
+- `access_token_issuer_mismatch` or `access_signing_key_mismatch`: set staging `CF_ACCESS_TEAM_DOMAIN` to the team domain shown in Zero Trust settings, without a path (for example `your-team.cloudflareaccess.com`).
+- `access_signing_keys_unavailable`: copy the exact **Team domain** from **Zero Trust → Settings → Team name and domain**, then test its public key endpoint before updating the secret. It must be a `*.cloudflareaccess.com` domain, not the protected application hostname:
+
+  ```powershell
+  Invoke-RestMethod https://YOUR-TEAM.cloudflareaccess.com/cdn-cgi/access/certs | ConvertTo-Json -Depth 4
+  ```
+
+  A correct endpoint returns JSON with a non-empty `keys` array. HTTP 404, DNS failure, an HTML page, or an empty key list means the team domain is incorrect. Once the endpoint works, run `npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env staging` with only the hostname (no `https://`, path, quotes, or trailing slash), then refresh the admin page.
+- `access_token_expired`: sign out, remove the site's `CF_Authorization` cookie, and sign in again.
+- `access_not_configured`: one or both staging Worker variables are absent.
+
+`CF_ACCESS_AUD` may contain a comma-separated list during an application migration, but normally it should contain exactly one audience tag. Do not set `AUTH_TEST_MODE` on a deployed Worker.
+
+For a local-only preview without Cloudflare Access:
+
+```bash
+printf 'AUTH_TEST_MODE="true"\n' > .dev.vars.staging
+npx wrangler d1 migrations apply yourbar-community-staging --env staging --local
+npx wrangler dev --env staging
+```
+
+Open the local `/admin` URL printed by Wrangler. In this mode the page sends the existing test-admin headers automatically. The local D1 database starts empty, so submit a local Community recipe first if you want a populated moderation queue. `.dev.vars*` is git-ignored and must never be deployed.
+
+Start with staging and do not expose a production admin route until the production Community rollout is explicitly approved.
+
+### Local verification checklist
+
+```bash
+npm run check
+```
+
+- Confirm Community routes return `feature_disabled` with the master flag off.
+- Use local D1 only; never point tests at production KV, R2, or D1.
+- Re-run personal share/image tests to verify backward compatibility.
+
+### Staging rollout checklist
+
+1. Use Worker `yourbar-share-api-staging`, `https://staging-api.yourbar.app`, staging KV, `yourbar-recipe-images-staging`, and the committed staging D1 binding.
+2. Run `npm run migrate:staging` before the first Community deploy; the current database screenshot shows `num_tables = 0`, so this step is still required.
+3. Configure Cloudflare Access settings before testing admin moderation. Mobile JWT secrets are not required in staging unverified mode.
+4. Run `npm run deploy:staging` (never `npm run deploy`); its pre-deploy guard verifies that enabled Community has a D1 binding.
+5. Smoke-test `GET /health`, personal share create/read, image upload/read, authenticated Community submission, missing-`googleLogin` validation, admin approve/reject, feed list/detail, save/unsave, and rating create/update/delete.
+
+### Production rollout checklist (manual approval required)
+
+1. Do **not** run production migrations or create/change production bindings as part of a normal staging deployment.
+2. Deploy only while every Community feature flag remains `false`.
+3. Smoke-test `GET /health`, `POST /api/recipes`, `GET /api/recipes/:id`, `/r/:id`, and `POST /api/images`.
+4. Create/bind production D1 and apply its migration only after explicit approval.
+5. Configure production auth/Access secrets, then enable flags incrementally after manual approval.

@@ -31,6 +31,13 @@ export type Ingredient = {
   unitName?: string;
   note?: string;
   substitutes?: Ingredient[];
+  synonyms?: string[];
+  abv?: number | string;
+  barcodes?: string[];
+  optional?: boolean;
+  garnish?: boolean | string;
+  process?: string;
+  serving?: string;
 };
 
 export type RecipeSharePayloadV1 = {
@@ -49,6 +56,7 @@ export type RecipeSharePayloadV1 = {
     methodId?: string;
     methodName?: string;
     tags?: RecipeTag[];
+    tagDetails?: LocalizedReference[];
     servings?: number;
     imageUrl?: string;
     video?: string;
@@ -58,6 +66,25 @@ export type RecipeSharePayloadV1 = {
     appVersion?: string;
     platform?: string;
   };
+};
+
+export type SharedRecipeDTO = RecipeSharePayloadV1["recipe"];
+
+export type CommunityRecipeListItemDTO = {
+  id: string;
+  recipe: SharedRecipeDTO;
+  publishedAt: string;
+  updatedAt: string;
+  saveCount: number;
+  ratingCount: number;
+  ratingSum: number;
+  averageRating: number;
+  isSavedByCurrentUser: boolean;
+  currentUserRating: number | null;
+  shareUrl?: string;
+  publicUrl?: string;
+  source: { kind: "community"; submissionId: string };
+  author: { googleLogin: string };
 };
 
 export type ValidationIssue = {
@@ -209,6 +236,14 @@ function validateIngredient(value: unknown, path: string, issues: ValidationIssu
   optionalString(value.unitId, `${path}.unitId`, 80, issues);
   optionalString(value.unitName, `${path}.unitName`, 80, issues);
   optionalString(value.note, `${path}.note`, 240, issues);
+  optionalString(value.process, `${path}.process`, 240, issues);
+  optionalString(value.serving, `${path}.serving`, 240, issues);
+  if (value.abv !== undefined && typeof value.abv !== "number" && !isString(value.abv)) issues.push({ path: `${path}.abv`, message: "Must be a number or string" });
+  if (value.optional !== undefined && typeof value.optional !== "boolean") issues.push({ path: `${path}.optional`, message: "Must be a boolean" });
+  if (value.garnish !== undefined && typeof value.garnish !== "boolean" && !isString(value.garnish)) issues.push({ path: `${path}.garnish`, message: "Must be a boolean or string" });
+  for (const [field, candidate] of [["synonyms", value.synonyms], ["barcodes", value.barcodes]] as const) {
+    if (candidate !== undefined && (!Array.isArray(candidate) || candidate.length > 80 || !candidate.every(isString))) issues.push({ path: `${path}.${field}`, message: "Must be an array of up to 80 strings" });
+  }
 
   if (value.substitutes === undefined) return;
   if (!Array.isArray(value.substitutes) || value.substitutes.length > 80) {
@@ -264,6 +299,7 @@ export function validateRecipeSharePayloadV1(input: unknown): ValidationResult {
     }
 
     validateTags(recipe.tags, "recipe.tags", { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
+    validateTags(recipe.tagDetails, "recipe.tagDetails", { maxItems: 30, stringMax: 40, idMax: 120, nameMax: 40 }, issues);
 
     if (recipe.servings !== undefined) {
       if (typeof recipe.servings !== "number" || !Number.isInteger(recipe.servings) || recipe.servings < 1 || recipe.servings > 100) {
