@@ -37,16 +37,20 @@ class MemoryD1 {
   async batch(statements) { const results = []; for (const statement of statements) results.push(await this.run(statement.sql, statement.values)); return results; }
   async run(sql, v) {
     if (sql.startsWith('INSERT INTO community_submissions')) {
-      const [id, submitter_user_id, author_google_login, payload_json, recipe_checksum, created_at] = v;
-      this.submissions.set(id, { id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null });
+      const [id, submitter_user_id, author_google_login, payload_json, recipe_checksum, created_at, target_recipe_id, base_recipe_checksum] = v;
+      this.submissions.set(id, { id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null, target_recipe_id, base_recipe_checksum });
     } else if (sql.startsWith("UPDATE community_submissions SET status = 'rejected'")) {
       const [rejection_reason, moderator_notes, reviewed_at, reviewed_by, id] = v; Object.assign(this.submissions.get(id), { status: 'rejected', rejection_reason, moderator_notes, reviewed_at, reviewed_by });
     } else if (sql.startsWith("UPDATE community_submissions SET status = 'approved'")) {
       const [moderator_notes, reviewed_at, reviewed_by, id] = v; Object.assign(this.submissions.get(id), { status: 'approved', moderator_notes, reviewed_at, reviewed_by });
     } else if (sql.startsWith('INSERT INTO community_recipes')) {
-      const [id, submission_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, random_key, published_at, updated_at] = v;
+      const [id, submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, random_key, published_at, updated_at] = v;
       const old = [...this.recipes.values()].find((row) => row.submission_id === submission_id);
-      this.recipes.set(id, { ...(old ?? {}), id, submission_id, author_google_login, payload_json, recipe_checksum, status: 'published', save_count: old?.save_count ?? 0, rating_count: old?.rating_count ?? 0, rating_sum: old?.rating_sum ?? 0, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, random_key, published_at: old?.published_at ?? published_at, updated_at });
+      this.recipes.set(id, { ...(old ?? {}), id, submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, status: 'published', save_count: old?.save_count ?? 0, rating_count: old?.rating_count ?? 0, rating_sum: old?.rating_sum ?? 0, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, random_key, published_at: old?.published_at ?? published_at, updated_at });
+    } else if (sql.startsWith('UPDATE community_recipes SET submission_id = ?')) {
+      const [submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at, id, baseChecksum] = v;
+      const row = this.recipes.get(id);
+      if (row?.recipe_checksum === baseChecksum) Object.assign(row, { submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at });
     } else if (sql.startsWith('INSERT INTO admin_moderation_events')) this.audit.push(v);
     else if (sql.startsWith('INSERT OR IGNORE INTO community_recipe_saves')) {
       const [recipeId, userId, createdAt] = v; const key = `${recipeId}:${userId}`;
@@ -73,6 +77,8 @@ class MemoryD1 {
   }
   async first(sql, v) {
     if (sql.includes('FROM community_submissions WHERE id = ?')) return this.submissions.get(v[0]) ?? null;
+    if (sql.includes("FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending'")) return [...this.submissions.values()].find((row) => row.target_recipe_id === v[0] && row.status === 'pending') ?? null;
+    if (sql.includes('FROM community_recipes WHERE id = ?')) return this.recipes.get(v[0]) ?? null;
     if (sql.includes('FROM community_recipes r WHERE r.id = ?')) {
       const personalized = sql.includes('s.user_id = ?'); const id = v[personalized ? 2 : 0]; return this.personalize(this.recipes.get(id)?.status === 'published' ? this.recipes.get(id) : null, personalized ? v[0] : null);
     }
@@ -106,6 +112,11 @@ async function api(database, path, init = {}) { return handleRequest(new Request
 async function submit(database, payload = richPayload) {
   const response = await api(database, '/api/community/submissions', { method: 'POST', headers: userHeaders(), body: JSON.stringify({ googleLogin: 'author@gmail.com', payload }) });
   assert.equal(response.status, 201); return response.json();
+}
+async function submitUpdate(database, recipeId, payload, baseRecipeChecksum, headers = userHeaders()) {
+  return api(database, '/api/community/submissions', { method: 'POST', headers, body: JSON.stringify({
+    googleLogin: 'author@gmail.com', targetRecipeId: recipeId, baseRecipeChecksum, payload,
+  }) });
 }
 async function moderate(database, id, action) {
   return api(database, `/api/admin/community/submissions/${id}`, { method: 'PATCH', headers: userHeaders({ 'X-Test-Admin': 'true' }), body: JSON.stringify({ action }) });
@@ -178,6 +189,64 @@ test('rating create, update, delete maintains aggregates and personalization', a
   const create = await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: userHeaders(), body: JSON.stringify({ rating: 5 }) }); assert.deepEqual(await create.json(), { ratingCount: 1, ratingSum: 5, averageRating: 5, currentUserRating: 5 });
   const update = await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: userHeaders(), body: JSON.stringify({ rating: 3 }) }); assert.deepEqual(await update.json(), { ratingCount: 1, ratingSum: 3, averageRating: 3, currentUserRating: 3 });
   const remove = await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'DELETE', headers: userHeaders() }); assert.deepEqual(await remove.json(), { ratingCount: 0, ratingSum: 0, averageRating: 0, currentUserRating: null });
+});
+
+test('approved update keeps recipe id, ratings, saves, and old recipe public until approval', async () => {
+  const database = new MemoryD1();
+  const created = await submit(database);
+  const firstApproval = await moderate(database, created.id, 'approve');
+  const recipeId = (await firstApproval.json()).recipeId;
+  await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'POST', headers: userHeaders() });
+  await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: userHeaders(), body: JSON.stringify({ rating: 5 }) });
+  const original = await api(database, `/api/community/recipes/${recipeId}`);
+  const originalBody = await original.json();
+  const updatedPayload = { ...richPayload, recipe: { ...richPayload.recipe, name: 'Updated Garden Daiquiri', description: 'A newly moderated description.' } };
+  const updateResponse = await submitUpdate(database, recipeId, updatedPayload, originalBody.recipeChecksum);
+  assert.equal(updateResponse.status, 201);
+  const update = await updateResponse.json();
+  assert.equal(update.submissionType, 'update');
+  assert.equal(update.targetRecipeId, recipeId);
+
+  const beforeApproval = await api(database, `/api/community/recipes/${recipeId}`);
+  assert.equal((await beforeApproval.json()).recipe.name, 'Garden Daiquiri');
+  const adminDetail = await api(database, `/api/admin/community/submissions/${update.id}`, { headers: userHeaders({ 'X-Test-Admin': 'true' }) });
+  const adminBody = await adminDetail.json();
+  assert.equal(adminBody.publishedRecipe.recipe.name, 'Garden Daiquiri');
+  assert.equal(adminBody.recipe.name, 'Updated Garden Daiquiri');
+
+  const approval = await moderate(database, update.id, 'approve');
+  assert.equal(approval.status, 200);
+  assert.equal((await approval.json()).recipeId, recipeId);
+  const afterApproval = await api(database, `/api/community/recipes/${recipeId}`, { headers: userHeaders() });
+  const afterBody = await afterApproval.json();
+  assert.equal(afterBody.recipe.name, 'Updated Garden Daiquiri');
+  assert.equal(afterBody.ratingCount, 1);
+  assert.equal(afterBody.ratingSum, 5);
+  assert.equal(afterBody.saveCount, 1);
+  assert.equal(afterBody.currentUserRating, 5);
+  assert.equal(afterBody.isSavedByCurrentUser, true);
+});
+
+test('recipe updates enforce ownership, one pending update, and optimistic checksum', async () => {
+  const database = new MemoryD1();
+  const created = await submit(database);
+  const approved = await moderate(database, created.id, 'approve');
+  const recipeId = (await approved.json()).recipeId;
+  const checksum = database.recipes.get(recipeId).recipe_checksum;
+  const payload = { ...richPayload, recipe: { ...richPayload.recipe, name: 'Pending update' } };
+
+  const stale = await submitUpdate(database, recipeId, payload, 'stale-checksum');
+  assert.equal(stale.status, 409);
+  const forbidden = await api(database, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders({ 'X-Test-User-Id': 'user-2', 'X-Test-User-Email': 'other@example.com' }),
+    body: JSON.stringify({ googleLogin: 'other@gmail.com', targetRecipeId: recipeId, baseRecipeChecksum: checksum, payload }),
+  });
+  assert.equal(forbidden.status, 403);
+  const first = await submitUpdate(database, recipeId, payload, checksum);
+  assert.equal(first.status, 201);
+  const duplicate = await submitUpdate(database, recipeId, payload, checksum);
+  assert.equal(duplicate.status, 409);
 });
 
 test('staging unverified mode accepts submission googleLogin without JWT', async () => {

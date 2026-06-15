@@ -551,13 +551,26 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the te
 - `POST|DELETE /api/community/recipes/:id/save`
 - `PUT|DELETE /api/community/recipes/:id/rating`
 
+To submit an edit to an already published recipe, call `POST /api/community/submissions` with the normal `googleLogin` and `payload` fields plus:
+
+```json
+{
+  "targetRecipeId": "recipe_sub_...",
+  "baseRecipeChecksum": "the recipeChecksum returned by the current public recipe"
+}
+```
+
+`targetRecipeId` keeps the public recipe identity stable. The API verifies that the submitting Google login owns the recipe, rejects a stale `baseRecipeChecksum`, and permits only one pending update per recipe. Until an administrator approves the submission, public list/detail endpoints continue serving the existing payload. Approval updates the existing `community_recipes` row rather than inserting a replacement, so ratings, saves, public URLs, and `publishedAt` are preserved while `updatedAt` and `source.submissionId` advance to the approved revision.
+
+The create-submission response and admin submission DTO include `submissionType` (`create` or `update`), `targetRecipeId`, and `baseRecipeChecksum`. Admin detail responses for updates additionally include `publishedRecipe`, containing the currently public recipe and checksum, so moderation clients can display a diff. If the public recipe changes while a submission is awaiting review, approval returns `409 conflict` and the author must submit a fresh update based on the latest checksum.
+
 The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
 
 Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 
 ### Community moderation UI
 
-The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. Update submissions are marked separately and show the changed fields side by side against the currently published recipe. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
 
 The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
 
