@@ -98,6 +98,15 @@ class MemoryD1 {
     return null;
   }
   async all(sql, v) {
+    if (sql.includes('INNER JOIN community_recipes r ON r.submission_id = s.id')) {
+      const [limit, offset] = v;
+      const rows = [...this.recipes.values()]
+        .filter((recipe) => recipe.status === 'published')
+        .map((recipe) => this.submissions.get(recipe.submission_id))
+        .filter((row) => row?.status === 'approved')
+        .sort((a,b) => b.created_at.localeCompare(a.created_at));
+      return { success: true, results: rows.slice(offset, offset + limit) };
+    }
     if (sql.includes('FROM community_submissions WHERE status = ?')) {
       const [status, limit, offset] = v; const rows = [...this.submissions.values()].filter((row) => row.status === status).sort((a,b) => b.created_at.localeCompare(a.created_at)); return { success: true, results: rows.slice(offset, offset + limit) };
     }
@@ -311,12 +320,35 @@ test('admin can delete a published recipe and pending updates cannot republish i
   assert.match(database.submissions.get(updateId).rejection_reason, /removed by administrator/);
   assert.equal((await api(database, `/api/community/recipes/${recipeId}`)).status, 404);
   assert.deepEqual((await (await api(database, '/api/community/recipes')).json()).items, []);
+  const approvedQueue = await api(database, '/api/admin/community/submissions?status=approved', {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.deepEqual((await approvedQueue.json()).items, []);
 
   const secondDelete = await api(database, `/api/admin/community/recipes/${recipeId}`, {
     method: 'DELETE',
     headers: userHeaders({ 'X-Test-Admin': 'true' }),
   });
   assert.deepEqual(await secondDelete.json(), { recipeId, status: 'hidden', deleted: true, alreadyDeleted: true });
+});
+
+test('approved admin queue shows only the current published revision', async () => {
+  const database = new MemoryD1();
+  const original = await submit(database);
+  const approved = await moderate(database, original.id, 'approve');
+  const recipeId = (await approved.json()).recipeId;
+  const payload = { ...richPayload, recipe: { ...richPayload.recipe, name: 'Current approved revision' } };
+  const update = await submitUpdate(database, recipeId, payload, database.recipes.get(recipeId).recipe_checksum);
+  const updateId = (await update.json()).id;
+  await moderate(database, updateId, 'approve');
+
+  const queue = await api(database, '/api/admin/community/submissions?status=approved', {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  const items = (await queue.json()).items;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, updateId);
+  assert.equal(items[0].recipe.name, 'Current approved revision');
 });
 
 test('feed supports cursor, search, tag/method filters and required sorts', async () => {

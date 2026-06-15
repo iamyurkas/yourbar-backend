@@ -237,8 +237,13 @@ async function listSubmissions(url: URL, database: D1Database): Promise<Response
   const fingerprint = `admin:${status}:${limit}`;
   const offset = decodeCursor(url.searchParams.get("cursor"), fingerprint);
   if (offset instanceof Response) return offset;
-  const result = await database.prepare("SELECT * FROM community_submissions WHERE status = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
-    .bind(status, limit + 1, offset).all<SubmissionRow>();
+  const result = status === "approved"
+    ? await database.prepare(`SELECT s.* FROM community_submissions s
+      INNER JOIN community_recipes r ON r.submission_id = s.id
+      WHERE s.status = 'approved' AND r.status = 'published'
+      ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`).bind(limit + 1, offset).all<SubmissionRow>()
+    : await database.prepare("SELECT * FROM community_submissions WHERE status = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
+      .bind(status, limit + 1, offset).all<SubmissionRow>();
   const rows = result.results ?? [];
   const hasMore = rows.length > limit;
   return jsonResponse({ items: rows.slice(0, limit).map((row) => submissionDto(row, true)), nextCursor: hasMore ? encodeCursor(offset + limit, fingerprint) : null });
