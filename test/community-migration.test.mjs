@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const migrationUrl = new URL('../migrations/0001_community.sql', import.meta.url);
+const revisionsMigrationUrl = new URL('../migrations/0002_community_recipe_revisions.sql', import.meta.url);
 
 test('Community migration avoids compound trigger statements that Wrangler 4.91 splits incorrectly', async () => {
   const sql = await readFile(migrationUrl, 'utf8');
@@ -13,4 +14,12 @@ test('Community migration avoids compound trigger statements that Wrangler 4.91 
   assert.match(sql, /CREATE TABLE IF NOT EXISTS community_recipe_saves/);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS community_recipe_ratings/);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS admin_moderation_events/);
+});
+
+test('Community revisions migration links pending submissions without SQL triggers', async () => {
+  const sql = await readFile(revisionsMigrationUrl, 'utf8');
+  assert.match(sql, /ADD COLUMN target_recipe_id/);
+  assert.match(sql, /ADD COLUMN base_recipe_checksum/);
+  assert.match(sql, /WHERE status = 'pending' AND target_recipe_id IS NOT NULL/);
+  assert.doesNotMatch(sql, /CREATE\s+TRIGGER/i);
 });

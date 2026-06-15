@@ -555,6 +555,28 @@ The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `
 
 Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 
+### Moderated recipe revisions
+
+An author can submit an update to an existing published Community recipe through the existing submissions endpoint by adding `targetRecipeId`:
+
+```json
+{
+  "googleLogin": "author@gmail.com",
+  "targetRecipeId": "recipe_sub_example",
+  "payload": {
+    "schemaVersion": 1,
+    "kind": "yourbar.recipeShare",
+    "recipe": {}
+  }
+}
+```
+
+The authenticated user must be the original submitter. Only one pending revision is allowed per recipe. While the revision is pending, public list/detail endpoints continue returning the last approved version.
+
+Admin submission DTOs identify revisions with `submissionType: "revision"` and include `targetRecipeId`, `currentRecipe`, and `proposedRecipe`. After approval, the Worker updates the existing `community_recipes` row instead of creating a new recipe. The public recipe ID, publication timestamp, ratings, saves, and existing links are preserved; only the approved recipe payload, checksum, searchable metadata, author display login, and `updatedAt` change.
+
+Approval returns `409 conflict` if the published recipe changed after the revision was submitted. A rejected revision leaves the current public recipe unchanged.
+
 ### Community moderation UI
 
 The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
