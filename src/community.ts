@@ -175,12 +175,47 @@ async function createSubmission(request: Request, env: CommunityEnv, database: D
   }
   const now = new Date().toISOString();
   const checksum = await recipeChecksum(validation.value.recipe);
+  if (!targetRecipeId) {
+    const pendingDuplicate = await database.prepare(`SELECT * FROM community_submissions
+      WHERE submitter_user_id = ? AND recipe_checksum = ? AND target_recipe_id IS NULL AND status = 'pending'
+      ORDER BY created_at DESC LIMIT 1`).bind(user.id, checksum).first<SubmissionRow>();
+    if (pendingDuplicate) {
+      return jsonResponse({ ...submissionDto(pendingDuplicate), duplicate: true, alreadyPublished: false });
+    }
+    const publishedDuplicate = await database.prepare(`SELECT * FROM community_recipes
+      WHERE author_user_id = ? AND recipe_checksum = ? AND status = 'published' LIMIT 1`).bind(user.id, checksum).first<RecipeRow>();
+    if (publishedDuplicate) {
+      return jsonResponse({
+        id: publishedDuplicate.submission_id,
+        status: "approved",
+        createdAt: publishedDuplicate.published_at,
+        recipeChecksum: publishedDuplicate.recipe_checksum,
+        googleLogin: publishedDuplicate.author_google_login,
+        submissionType: "create",
+        targetRecipeId: null,
+        baseRecipeChecksum: null,
+        recipeId: publishedDuplicate.id,
+        duplicate: true,
+        alreadyPublished: true,
+      });
+    }
+  }
   const submissionId = id("sub");
-  await database.prepare(`INSERT INTO community_submissions
+  const inserted = await database.prepare(`INSERT OR IGNORE INTO community_submissions
     (id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status, created_at, target_recipe_id, base_recipe_checksum)
     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(submissionId, user.id, googleLogin, JSON.stringify(validation.value), checksum, now, targetRecipeId, targetRecipe?.recipe_checksum ?? null).run();
+  if ((inserted.meta?.changes ?? 1) === 0) {
+    const duplicate = targetRecipeId
+      ? await database.prepare("SELECT * FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").bind(targetRecipeId).first<SubmissionRow>()
+      : await database.prepare(`SELECT * FROM community_submissions
+        WHERE submitter_user_id = ? AND recipe_checksum = ? AND target_recipe_id IS NULL AND status = 'pending'
+        ORDER BY created_at DESC LIMIT 1`).bind(user.id, checksum).first<SubmissionRow>();
+    if (duplicate) return jsonResponse({ ...submissionDto(duplicate), duplicate: true, alreadyPublished: false });
+    return jsonError("conflict", "An equivalent submission is already awaiting moderation", 409);
+  }
   return jsonResponse({ id: submissionId, status: "pending", createdAt: now, recipeChecksum: checksum, googleLogin,
-    submissionType: targetRecipeId ? "update" : "create", targetRecipeId, baseRecipeChecksum: targetRecipe?.recipe_checksum ?? null }, 201);
+    submissionType: targetRecipeId ? "update" : "create", targetRecipeId, baseRecipeChecksum: targetRecipe?.recipe_checksum ?? null,
+    duplicate: false, alreadyPublished: false }, 201);
 }
 
 async function listSubmissions(url: URL, database: D1Database): Promise<Response> {

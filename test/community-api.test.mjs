@@ -36,7 +36,7 @@ class MemoryD1 {
   prepare(sql) { return new Statement(this, sql); }
   async batch(statements) { const results = []; for (const statement of statements) results.push(await this.run(statement.sql, statement.values)); return results; }
   async run(sql, v) {
-    if (sql.startsWith('INSERT INTO community_submissions')) {
+    if (sql.startsWith('INSERT INTO community_submissions') || sql.startsWith('INSERT OR IGNORE INTO community_submissions')) {
       const [id, submitter_user_id, author_google_login, payload_json, recipe_checksum, created_at, target_recipe_id, base_recipe_checksum] = v;
       this.submissions.set(id, { id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null, target_recipe_id, base_recipe_checksum });
     } else if (sql.startsWith("UPDATE community_submissions SET status = 'rejected'")) {
@@ -78,6 +78,12 @@ class MemoryD1 {
   async first(sql, v) {
     if (sql.includes('FROM community_submissions WHERE id = ?')) return this.submissions.get(v[0]) ?? null;
     if (sql.includes("FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending'")) return [...this.submissions.values()].find((row) => row.target_recipe_id === v[0] && row.status === 'pending') ?? null;
+    if (sql.includes('submitter_user_id = ? AND recipe_checksum = ?') && sql.includes("status = 'pending'")) {
+      return [...this.submissions.values()].find((row) => row.submitter_user_id === v[0] && row.recipe_checksum === v[1] && row.target_recipe_id == null && row.status === 'pending') ?? null;
+    }
+    if (sql.includes('author_user_id = ? AND recipe_checksum = ?') && sql.includes("status = 'published'")) {
+      return [...this.recipes.values()].find((row) => row.author_user_id === v[0] && row.recipe_checksum === v[1] && row.status === 'published') ?? null;
+    }
     if (sql.includes('FROM community_recipes WHERE id = ?')) return this.recipes.get(v[0]) ?? null;
     if (sql.includes('FROM community_recipes r WHERE r.id = ?')) {
       const personalized = sql.includes('s.user_id = ?'); const id = v[personalized ? 2 : 0]; return this.personalize(this.recipes.get(id)?.status === 'published' ? this.recipes.get(id) : null, personalized ? v[0] : null);
@@ -143,6 +149,66 @@ test('submission requires auth and googleLogin and reuses recipe validation', as
 test('submission stores trusted auth id and author Google login as pending', async () => {
   const database = new MemoryD1(); const created = await submit(database); const row = database.submissions.get(created.id);
   assert.equal(created.status, 'pending'); assert.equal(created.googleLogin, 'author@gmail.com'); assert.equal(row.author_google_login, 'author@gmail.com'); assert.equal(row.submitter_user_id, 'user-1');
+});
+
+test('identical new submissions reuse one pending moderation item', async () => {
+  const database = new MemoryD1();
+  const first = await submit(database);
+  const duplicateResponse = await api(database, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders(),
+    body: JSON.stringify({ googleLogin: 'author@gmail.com', payload: richPayload }),
+  });
+  assert.equal(duplicateResponse.status, 200);
+  const duplicate = await duplicateResponse.json();
+  assert.equal(duplicate.id, first.id);
+  assert.equal(duplicate.status, 'pending');
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.alreadyPublished, false);
+  assert.equal(database.submissions.size, 1);
+
+  const queue = await api(database, '/api/admin/community/submissions?status=pending', {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.equal((await queue.json()).items.length, 1);
+});
+
+test('identical recipe is not resubmitted after approval but may be resubmitted after rejection', async () => {
+  const database = new MemoryD1();
+  const first = await submit(database);
+  const approved = await moderate(database, first.id, 'approve');
+  const recipeId = (await approved.json()).recipeId;
+  const approvedDuplicate = await api(database, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders(),
+    body: JSON.stringify({ googleLogin: 'author@gmail.com', payload: richPayload }),
+  });
+  assert.equal(approvedDuplicate.status, 200);
+  assert.deepEqual(await approvedDuplicate.json(), {
+    id: first.id,
+    status: 'approved',
+    createdAt: database.recipes.get(recipeId).published_at,
+    recipeChecksum: database.recipes.get(recipeId).recipe_checksum,
+    googleLogin: 'author@gmail.com',
+    submissionType: 'create',
+    targetRecipeId: null,
+    baseRecipeChecksum: null,
+    recipeId,
+    duplicate: true,
+    alreadyPublished: true,
+  });
+  assert.equal(database.submissions.size, 1);
+
+  const rejectedDatabase = new MemoryD1();
+  const rejected = await submit(rejectedDatabase);
+  await moderate(rejectedDatabase, rejected.id, 'reject');
+  const retry = await api(rejectedDatabase, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders(),
+    body: JSON.stringify({ googleLogin: 'author@gmail.com', payload: richPayload }),
+  });
+  assert.equal(retry.status, 201);
+  assert.equal(rejectedDatabase.submissions.size, 2);
 });
 
 test('admin moderation is protected and reject without a reason never publishes', async () => {

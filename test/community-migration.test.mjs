@@ -22,4 +22,8 @@ test('Community update migration links submissions to stable recipes', async () 
   assert.match(sql, /base_recipe_checksum TEXT/);
   assert.match(sql, /author_user_id TEXT/);
   assert.match(sql, /idx_community_submissions_target_status/);
+  assert.match(sql, /idx_community_submissions_author_checksum_status/);
+  assert.match(sql, /idx_community_recipes_author_checksum/);
+  assert.match(sql, /idx_community_submissions_one_pending_create/);
+  assert.match(sql, /idx_community_submissions_one_pending_update/);
 });
