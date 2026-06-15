@@ -520,6 +520,16 @@ npm run migrate:staging
 
 The corrected migration contains only table/index statements. Atomic save/rating aggregates are maintained by transactional D1 `batch()` calls in the Worker instead of SQL triggers.
 
+Community API failures include an `X-Request-Id` response header and the same value under `error.details.requestId`, allowing a mobile log entry to be matched with Worker logs. Staging and local responses also include the underlying safe error message in `error.details.cause`. Production keeps unexpected causes server-side.
+
+If Community update code is deployed before `0002_community_recipe_updates.sql` is applied, the API returns `503 community_schema_outdated` instead of an opaque `500`. Its details identify the required migration, failing operation, D1 cause, and remediation action. Apply migrations to the same environment/database binding used by the deployed Worker:
+
+```bash
+npm run migrate:staging
+```
+
+Then retry the request. The request ID is also emitted in the structured `Unhandled request error` Worker log entry.
+
 ### Lightweight Community user identity (no JWT in staging)
 
 Staging intentionally uses `COMMUNITY_USER_AUTH_MODE=unverified` for faster iteration. This is an identity hint, not cryptographic authentication:

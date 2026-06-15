@@ -136,6 +136,55 @@ test('community master flag is disabled independently of personal routes', async
   assert.notEqual((await personal.json()).error.code, 'feature_disabled');
 });
 
+test('outdated Community schema returns migration diagnostics and a request id', async () => {
+  const database = {
+    prepare() {
+      throw new Error('D1_ERROR: no such column: target_recipe_id at offset 42');
+    },
+  };
+  const response = await api(database, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders({ 'X-Request-Id': 'mobile-share-123' }),
+    body: JSON.stringify({ googleLogin: 'author@gmail.com', payload: richPayload }),
+  });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-request-id'), 'mobile-share-123');
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: 'community_schema_outdated',
+      message: 'Community database migration is required',
+      details: {
+        requestId: 'mobile-share-123',
+        requiredMigration: '0002_community_recipe_updates.sql',
+        operation: '/api/community/submissions',
+        cause: 'D1_ERROR: no such column: target_recipe_id at offset 42',
+        action: 'Apply the pending D1 migrations to this Worker environment, then retry the request.',
+      },
+    },
+  });
+});
+
+test('staging internal errors include a safe cause and generated request id', async () => {
+  const database = {
+    prepare() {
+      throw new TypeError('database binding failed');
+    },
+  };
+  const response = await api(database, '/api/community/submissions', {
+    method: 'POST',
+    headers: userHeaders(),
+    body: JSON.stringify({ googleLogin: 'author@gmail.com', payload: richPayload }),
+  });
+  assert.equal(response.status, 500);
+  assert.ok(response.headers.get('x-request-id'));
+  const body = await response.json();
+  assert.equal(body.error.code, 'internal_error');
+  assert.equal(body.error.details.cause, 'database binding failed');
+  assert.equal(body.error.details.errorType, 'TypeError');
+  assert.equal(body.error.details.operation, '/api/community/submissions');
+  assert.equal(body.error.details.requestId, response.headers.get('x-request-id'));
+});
+
 test('submission requires auth and googleLogin and reuses recipe validation', async () => {
   const database = new MemoryD1();
   const unauthenticated = await api(database, '/api/community/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ googleLogin: 'a@b.com', payload: richPayload }) });
