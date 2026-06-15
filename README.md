@@ -581,7 +581,8 @@ Exact duplicate submissions from the same authenticated author are deduplicated 
 - After approval, submitting the identical recipe again returns the existing submission and stable `recipeId` with `200 OK`, `duplicate: true`, and `alreadyPublished: true`. No new submission or public recipe is created.
 - After rejection, the author may submit the same payload again; this creates a new pending submission so a corrected moderation decision remains possible.
 - Different authors are not merged solely by checksum. Ownership and attribution remain separate even if their payloads happen to be identical.
-- Update submissions are deduplicated by `targetRecipeId`: only one pending update can exist for a published recipe at a time.
+- Only one pending update can exist for a published recipe at a time. Repeating the exact same update returns the existing submission with `200 OK`, `duplicate: true`, and `alreadyPublished: false`, allowing a client that lost its local pending state to recover the pending submission ID.
+- Sending different changes while another update is pending returns `409 pending_update_conflict`. `error.details` includes `targetRecipeId`, `pendingSubmissionId`, `pendingRecipeChecksum`, `submittedRecipeChecksum`, and `pendingCreatedAt`. The client should store the pending submission ID, mark the local publication as awaiting moderation, and avoid treating the unchanged public recipe as proof that no update is pending.
 
 The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
 

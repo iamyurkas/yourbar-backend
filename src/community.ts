@@ -160,6 +160,7 @@ async function createSubmission(request: Request, env: CommunityEnv, database: D
     !["googleLogin", "userId", "submitter_user_id", "targetRecipeId", "baseRecipeChecksum"].includes(key)));
   const validation = validateRecipeSharePayloadV1(candidate);
   if (!validation.ok) return jsonError("validation_failed", "Recipe payload is invalid", 400, validation.issues);
+  const checksum = await recipeChecksum(validation.value.recipe);
   const targetRecipeId = typeof body.targetRecipeId === "string" && body.targetRecipeId.trim() ? body.targetRecipeId.trim() : null;
   let targetRecipe: RecipeRow | null = null;
   if (targetRecipeId) {
@@ -168,14 +169,24 @@ async function createSubmission(request: Request, env: CommunityEnv, database: D
     if (targetRecipe.author_user_id ? targetRecipe.author_user_id !== user.id : targetRecipe.author_google_login.toLowerCase() !== googleLogin.toLowerCase()) {
       return jsonError("forbidden", "Only the recipe author can submit an update", 403);
     }
-    const pending = await database.prepare("SELECT id FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending' LIMIT 1").bind(targetRecipeId).first<{ id: string }>();
-    if (pending) return jsonError("conflict", "This recipe already has an update awaiting moderation", 409);
+    const pending = await database.prepare("SELECT * FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").bind(targetRecipeId).first<SubmissionRow>();
+    if (pending) {
+      if (pending.submitter_user_id === user.id && pending.recipe_checksum === checksum) {
+        return jsonResponse({ ...submissionDto(pending), duplicate: true, alreadyPublished: false });
+      }
+      return jsonError("pending_update_conflict", "This recipe already has an update awaiting moderation", 409, {
+        targetRecipeId,
+        pendingSubmissionId: pending.id,
+        pendingRecipeChecksum: pending.recipe_checksum,
+        submittedRecipeChecksum: checksum,
+        pendingCreatedAt: pending.created_at,
+      });
+    }
     if (typeof body.baseRecipeChecksum === "string" && body.baseRecipeChecksum !== targetRecipe.recipe_checksum) {
       return jsonError("conflict", "The published recipe changed after it was opened for editing", 409);
     }
   }
   const now = new Date().toISOString();
-  const checksum = await recipeChecksum(validation.value.recipe);
   if (!targetRecipeId) {
     const pendingDuplicate = await database.prepare(`SELECT * FROM community_submissions
       WHERE submitter_user_id = ? AND recipe_checksum = ? AND target_recipe_id IS NULL AND status = 'pending'

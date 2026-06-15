@@ -402,7 +402,21 @@ test('recipe updates enforce ownership, one pending update, and optimistic check
   const first = await submitUpdate(database, recipeId, payload, checksum);
   assert.equal(first.status, 201);
   const duplicate = await submitUpdate(database, recipeId, payload, checksum);
-  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.status, 200);
+  const duplicateBody = await duplicate.json();
+  assert.equal(duplicateBody.id, (await first.clone().json()).id);
+  assert.equal(duplicateBody.duplicate, true);
+  assert.equal(duplicateBody.alreadyPublished, false);
+
+  const newerPayload = { ...richPayload, recipe: { ...richPayload.recipe, name: 'Different pending update' } };
+  const conflict = await submitUpdate(database, recipeId, newerPayload, checksum);
+  assert.equal(conflict.status, 409);
+  const conflictBody = await conflict.json();
+  assert.equal(conflictBody.error.code, 'pending_update_conflict');
+  assert.equal(conflictBody.error.details.targetRecipeId, recipeId);
+  assert.equal(conflictBody.error.details.pendingSubmissionId, duplicateBody.id);
+  assert.equal(conflictBody.error.details.pendingRecipeChecksum, duplicateBody.recipeChecksum);
+  assert.notEqual(conflictBody.error.details.submittedRecipeChecksum, duplicateBody.recipeChecksum);
 });
 
 test('staging unverified mode accepts submission googleLogin without JWT', async () => {
