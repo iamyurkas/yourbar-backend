@@ -33,6 +33,7 @@ test('admin moderation page is served at both canonical paths', async () => {
     assert.match(html, /Reason for rejection \(optional\)/);
     assert.doesNotMatch(html, /Please provide a rejection reason/);
     assert.match(html, /Delete published recipe/);
+    assert.match(html, /Permanently delete rejected recipe/);
     assert.match(html, /\/api\/admin\/community\/recipes\//);
     const script = html.match(/<script nonce="[^"]+">([\s\S]+)<\/script>/)?.[1];
     assert.ok(script);

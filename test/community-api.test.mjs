@@ -74,6 +74,12 @@ class MemoryD1 {
     } else if (sql.startsWith('DELETE FROM community_recipe_ratings')) {
       const [recipeId, userId] = v; const key = `${recipeId}:${userId}`; const old = this.ratings.get(key);
       if (old) this.ratings.delete(key);
+    } else if (sql.startsWith('DELETE FROM admin_moderation_events')) {
+      const [submissionId] = v;
+      this.audit = this.audit.filter((event) => event[3] !== submissionId);
+    } else if (sql.startsWith('DELETE FROM community_submissions')) {
+      const [submissionId] = v;
+      if (this.submissions.get(submissionId)?.status === 'rejected') this.submissions.delete(submissionId);
     }
     return { success: true, meta: { changes: 1 } };
   }
@@ -284,6 +290,39 @@ test('admin moderation is protected and reject without a reason never publishes'
   assert.equal((await rejected.json()).rejectionReason, null);
   assert.equal(database.submissions.get(created.id).rejection_reason, null);
   const feed = await api(database, '/api/community/recipes'); assert.deepEqual((await feed.json()).items, []); assert.equal(database.audit.length, 1);
+});
+
+test('admin can permanently delete only rejected submissions', async () => {
+  const database = new MemoryD1();
+  const pending = await submit(database);
+  const pendingDelete = await api(database, `/api/admin/community/submissions/${pending.id}`, {
+    method: 'DELETE',
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.equal(pendingDelete.status, 409);
+
+  await moderate(database, pending.id, 'reject');
+  assert.equal(database.audit.length, 1);
+  const unauthorized = await api(database, `/api/admin/community/submissions/${pending.id}`, {
+    method: 'DELETE',
+    headers: userHeaders(),
+  });
+  assert.equal(unauthorized.status, 401);
+
+  const deleted = await api(database, `/api/admin/community/submissions/${pending.id}`, {
+    method: 'DELETE',
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.deepEqual(await deleted.json(), { submissionId: pending.id, deleted: true });
+  assert.equal(database.submissions.has(pending.id), false);
+  assert.equal(database.audit.length, 0);
+  const rejectedQueue = await api(database, '/api/admin/community/submissions?status=rejected', {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.deepEqual((await rejectedQueue.json()).items, []);
+  assert.equal((await api(database, `/api/admin/community/submissions/${pending.id}`, {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  })).status, 404);
 });
 
 test('approve publishes full importable recipe and author in public list/detail', async () => {

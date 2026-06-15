@@ -272,6 +272,19 @@ async function deletePublishedRecipe(database: D1Database, recipeId: string, adm
   return jsonResponse({ recipeId, status: "hidden", deleted: true, alreadyDeleted: false });
 }
 
+async function deleteRejectedSubmission(database: D1Database, submissionId: string): Promise<Response> {
+  const row = await database.prepare("SELECT * FROM community_submissions WHERE id = ?").bind(submissionId).first<SubmissionRow>();
+  if (!row) return jsonError("not_found", "Community submission was not found", 404);
+  if (row.status !== "rejected") return jsonError("conflict", "Only rejected submissions can be permanently deleted", 409);
+  const published = await database.prepare("SELECT id FROM community_recipes WHERE submission_id = ?").bind(submissionId).first<{ id: string }>();
+  if (published) return jsonError("conflict", "A submission linked to a Community recipe cannot be permanently deleted", 409);
+  await database.batch([
+    database.prepare("DELETE FROM admin_moderation_events WHERE submission_id = ?").bind(submissionId),
+    database.prepare("DELETE FROM community_submissions WHERE id = ? AND status = 'rejected'").bind(submissionId),
+  ]);
+  return jsonResponse({ submissionId, deleted: true });
+}
+
 async function moderate(request: Request, env: CommunityEnv, database: D1Database, submissionId: string, adminId: string): Promise<Response> {
   const body = await jsonBody(request, env);
   if (body instanceof Response) return body;
@@ -431,6 +444,7 @@ export async function handleCommunityRequest(request: Request, env: CommunityEnv
     if (match?.[1]) {
       if (request.method === "GET") return getSubmission(match[1], database);
       if (request.method === "PATCH") return moderate(request, env, database, match[1], admin.id);
+      if (request.method === "DELETE") return deleteRejectedSubmission(database, match[1]);
       return jsonError("method_not_allowed", "Method not allowed", 405);
     }
   }
