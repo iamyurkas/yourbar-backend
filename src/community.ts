@@ -18,6 +18,7 @@ type SubmissionRow = {
   id: string; submitter_user_id: string; author_google_login: string; payload_json: string; recipe_checksum: string;
   status: "pending" | "approved" | "rejected"; rejection_reason: string | null; moderator_notes: string | null;
   created_at: string; reviewed_at: string | null; reviewed_by: string | null;
+  target_recipe_id: string | null; base_recipe_checksum: string | null; current_payload_json?: string | null;
 };
 
 type RecipeRow = {
@@ -81,11 +82,18 @@ function recipeDto(row: RecipeRow, env: CommunityEnv): CommunityRecipeListItemDT
   };
 }
 function submissionDto(row: SubmissionRow, includePayload = false) {
+  const proposedRecipe = includePayload ? parseJson<RecipeSharePayloadV1>(row.payload_json).recipe : undefined;
+  const currentRecipe = includePayload && row.current_payload_json
+    ? parseJson<RecipeSharePayloadV1>(row.current_payload_json).recipe
+    : undefined;
   return {
     id: row.id, status: row.status, createdAt: row.created_at, recipeChecksum: row.recipe_checksum,
     googleLogin: row.author_google_login,
+    submissionType: row.target_recipe_id ? "revision" : "new",
+    targetRecipeId: row.target_recipe_id,
+    baseRecipeChecksum: row.base_recipe_checksum,
     ...(includePayload ? {
-      submitterUserId: row.submitter_user_id, recipe: parseJson<RecipeSharePayloadV1>(row.payload_json).recipe,
+      submitterUserId: row.submitter_user_id, recipe: proposedRecipe, proposedRecipe, currentRecipe,
       rejectionReason: row.rejection_reason, moderatorNotes: row.moderator_notes,
       reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by,
     } : {}),
@@ -146,16 +154,34 @@ async function createSubmission(request: Request, env: CommunityEnv, database: D
   if (!googleLogin) return jsonError("validation_failed", "googleLogin is required for community submission", 400);
   let user: AuthenticatedUser;
   try { user = await requireUser(request, env, googleLogin); } catch (error) { return error instanceof AuthError ? error.response : jsonError("unauthorized", "A Community user identifier is required", 401); }
-  const candidate = object(body.payload) ? body.payload : Object.fromEntries(Object.entries(body).filter(([key]) => key !== "googleLogin" && key !== "userId" && key !== "submitter_user_id"));
+  const candidate = object(body.payload) ? body.payload : Object.fromEntries(Object.entries(body)
+    .filter(([key]) => key !== "googleLogin" && key !== "userId" && key !== "submitter_user_id" && key !== "targetRecipeId"));
   const validation = validateRecipeSharePayloadV1(candidate);
   if (!validation.ok) return jsonError("validation_failed", "Recipe payload is invalid", 400, validation.issues);
+  const targetRecipeId = typeof body.targetRecipeId === "string" && body.targetRecipeId.trim() ? body.targetRecipeId.trim() : null;
+  let baseRecipeChecksum: string | null = null;
+  if (targetRecipeId) {
+    const target = await database.prepare(`SELECT r.recipe_checksum, s.submitter_user_id
+      FROM community_recipes r
+      JOIN community_submissions s ON s.id = r.submission_id
+      WHERE r.id = ? AND r.status = 'published'`).bind(targetRecipeId).first<{ recipe_checksum: string; submitter_user_id: string }>();
+    if (!target) return jsonError("not_found", "Community recipe was not found", 404);
+    if (target.submitter_user_id !== user.id) return jsonError("forbidden", "Only the recipe author can submit a revision", 403);
+    const pending = await database.prepare("SELECT id FROM community_submissions WHERE target_recipe_id = ? AND status = 'pending'")
+      .bind(targetRecipeId).first<{ id: string }>();
+    if (pending) return jsonError("conflict", "This recipe already has a pending revision", 409);
+    baseRecipeChecksum = target.recipe_checksum;
+  }
   const now = new Date().toISOString();
   const checksum = await recipeChecksum(validation.value.recipe);
   const submissionId = id("sub");
   await database.prepare(`INSERT INTO community_submissions
-    (id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status, created_at)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?)`).bind(submissionId, user.id, googleLogin, JSON.stringify(validation.value), checksum, now).run();
-  return jsonResponse({ id: submissionId, status: "pending", createdAt: now, recipeChecksum: checksum, googleLogin }, 201);
+    (id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status, created_at, target_recipe_id, base_recipe_checksum)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`).bind(submissionId, user.id, googleLogin, JSON.stringify(validation.value), checksum, now, targetRecipeId, baseRecipeChecksum).run();
+  return jsonResponse({
+    id: submissionId, status: "pending", createdAt: now, recipeChecksum: checksum, googleLogin,
+    submissionType: targetRecipeId ? "revision" : "new", targetRecipeId, baseRecipeChecksum,
+  }, 201);
 }
 
 async function listSubmissions(url: URL, database: D1Database): Promise<Response> {
@@ -165,7 +191,10 @@ async function listSubmissions(url: URL, database: D1Database): Promise<Response
   const fingerprint = `admin:${status}:${limit}`;
   const offset = decodeCursor(url.searchParams.get("cursor"), fingerprint);
   if (offset instanceof Response) return offset;
-  const result = await database.prepare("SELECT * FROM community_submissions WHERE status = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
+  const result = await database.prepare(`SELECT s.*, r.payload_json AS current_payload_json
+      FROM community_submissions s
+      LEFT JOIN community_recipes r ON r.id = s.target_recipe_id
+      WHERE s.status = ? ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`)
     .bind(status, limit + 1, offset).all<SubmissionRow>();
   const rows = result.results ?? [];
   const hasMore = rows.length > limit;
@@ -173,7 +202,10 @@ async function listSubmissions(url: URL, database: D1Database): Promise<Response
 }
 
 async function getSubmission(submissionId: string, database: D1Database): Promise<Response> {
-  const row = await database.prepare("SELECT * FROM community_submissions WHERE id = ?").bind(submissionId).first<SubmissionRow>();
+  const row = await database.prepare(`SELECT s.*, r.payload_json AS current_payload_json
+    FROM community_submissions s
+    LEFT JOIN community_recipes r ON r.id = s.target_recipe_id
+    WHERE s.id = ?`).bind(submissionId).first<SubmissionRow>();
   return row ? jsonResponse(submissionDto(row, true)) : jsonError("not_found", "Community submission was not found", 404);
 }
 
@@ -198,6 +230,26 @@ async function moderate(request: Request, env: CommunityEnv, database: D1Databas
   }
   const payload = parseJson<RecipeSharePayloadV1>(row.payload_json);
   const search = searchable(payload);
+  if (row.target_recipe_id) {
+    const current = await database.prepare("SELECT recipe_checksum FROM community_recipes WHERE id = ? AND status = 'published'")
+      .bind(row.target_recipe_id).first<{ recipe_checksum: string }>();
+    if (!current) return jsonError("not_found", "Community recipe was not found", 404);
+    if (current.recipe_checksum !== row.base_recipe_checksum) {
+      return jsonError("conflict", "Community recipe changed after this revision was submitted", 409);
+    }
+    await database.batch([
+      database.prepare("UPDATE community_submissions SET status = 'approved', moderator_notes = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ? AND status = 'pending'").bind(notes, now, adminId, submissionId),
+      database.prepare(`UPDATE community_recipes SET submission_id = ?, author_google_login = ?, payload_json = ?,
+        recipe_checksum = ?, status = 'published', name_normalized = ?, search_tokens_json = ?,
+        tag_ids_json = ?, method_ids_json = ?, updated_at = ? WHERE id = ?`)
+        .bind(submissionId, row.author_google_login, row.payload_json, row.recipe_checksum, search.name, JSON.stringify(search.tokens), JSON.stringify(search.tags), JSON.stringify(search.methods), now, row.target_recipe_id),
+      database.prepare("INSERT INTO admin_moderation_events (id, admin_user_id, created_at, action, submission_id, recipe_id, moderator_notes, rejection_reason) VALUES (?, ?, ?, 'approve', ?, ?, ?, NULL)").bind(eventId, adminId, now, submissionId, row.target_recipe_id, notes),
+    ]);
+    return jsonResponse({
+      ...submissionDto({ ...row, status: "approved", moderator_notes: notes, reviewed_at: now, reviewed_by: adminId }, true),
+      recipeId: row.target_recipe_id,
+    });
+  }
   const recipeId = `recipe_${submissionId}`;
   await database.batch([
     database.prepare("UPDATE community_submissions SET status = 'approved', moderator_notes = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ? AND status = 'pending'").bind(notes, now, adminId, submissionId),
