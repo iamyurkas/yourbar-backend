@@ -1652,9 +1652,39 @@ function wellKnownJson(rawJson: string | undefined, fallback: unknown): Response
   return jsonResponse(fallback, 200, { "Cache-Control": "public, max-age=3600" });
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function requestFailureResponse(error: unknown, requestId: string, path: string, url: URL, env: Env): Response {
+  const message = errorMessage(error);
+  const isCommunitySchemaError = (path.startsWith("/api/community/") || path.startsWith("/api/admin/community/"))
+    && /no such (?:column|table)|has no column named|no such index/i.test(message);
+  if (isCommunitySchemaError) {
+    return jsonError("community_schema_outdated", "Community database migration is required", 503, {
+      requestId,
+      requiredMigration: "0002_community_recipe_updates.sql",
+      operation: path,
+      cause: message,
+      action: "Apply the pending D1 migrations to this Worker environment, then retry the request.",
+    }, { "X-Request-Id": requestId });
+  }
+
+  const exposeCause = env.AUTH_TEST_MODE === "true"
+    || url.hostname === "localhost"
+    || url.hostname === "127.0.0.1"
+    || url.hostname.startsWith("staging-");
+  return jsonError("internal_error", "An unexpected error occurred", 500, {
+    requestId,
+    operation: path,
+    ...(exposeCause ? { cause: message, errorType: error instanceof Error ? error.name : typeof error } : {}),
+  }, { "X-Request-Id": requestId });
+}
+
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  const requestId = request.headers.get("X-Request-Id")?.trim() || crypto.randomUUID();
 
   try {
     if (path.startsWith("/api/") && request.method === "OPTIONS") {
@@ -1725,8 +1755,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
     return path.startsWith("/api/") ? withCors(response, request, env.CORS_ALLOWED_ORIGINS) : response;
   } catch (error) {
-    console.error("Unhandled request error", error);
-    const response = jsonError("internal_error", "An unexpected error occurred", 500);
+    console.error("Unhandled request error", { requestId, method: request.method, path, error });
+    const response = requestFailureResponse(error, requestId, path, url, env);
     return path.startsWith("/api/") ? withCors(response, request, env.CORS_ALLOWED_ORIGINS) : response;
   }
 }

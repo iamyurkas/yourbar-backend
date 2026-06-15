@@ -75,6 +75,7 @@ export type CommunityRecipeListItemDTO = {
   recipe: SharedRecipeDTO;
   publishedAt: string;
   updatedAt: string;
+  recipeChecksum: string;
   saveCount: number;
   ratingCount: number;
   ratingSum: number;

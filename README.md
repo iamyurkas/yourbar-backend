@@ -520,6 +520,16 @@ npm run migrate:staging
 
 The corrected migration contains only table/index statements. Atomic save/rating aggregates are maintained by transactional D1 `batch()` calls in the Worker instead of SQL triggers.
 
+Community API failures include an `X-Request-Id` response header and the same value under `error.details.requestId`, allowing a mobile log entry to be matched with Worker logs. Staging and local responses also include the underlying safe error message in `error.details.cause`. Production keeps unexpected causes server-side.
+
+If Community update code is deployed before `0002_community_recipe_updates.sql` is applied, the API returns `503 community_schema_outdated` instead of an opaque `500`. Its details identify the required migration, failing operation, D1 cause, and remediation action. Apply migrations to the same environment/database binding used by the deployed Worker:
+
+```bash
+npm run migrate:staging
+```
+
+Then retry the request. The request ID is also emitted in the structured `Unhandled request error` Worker log entry.
+
 ### Lightweight Community user identity (no JWT in staging)
 
 Staging intentionally uses `COMMUNITY_USER_AUTH_MODE=unverified` for faster iteration. This is an identity hint, not cryptographic authentication:
@@ -545,11 +555,34 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the te
 
 - `POST /api/community/submissions`
 - `GET /api/admin/community/submissions`
-- `GET|PATCH /api/admin/community/submissions/:id`
+- `GET|PATCH|DELETE /api/admin/community/submissions/:id`
+- `DELETE /api/admin/community/recipes/:id`
 - `GET /api/community/recipes`
 - `GET /api/community/recipes/:id`
 - `POST|DELETE /api/community/recipes/:id/save`
 - `PUT|DELETE /api/community/recipes/:id/rating`
+
+To submit an edit to an already published recipe, call `POST /api/community/submissions` with the normal `googleLogin` and `payload` fields plus:
+
+```json
+{
+  "targetRecipeId": "recipe_sub_...",
+  "baseRecipeChecksum": "the recipeChecksum returned by the current public recipe"
+}
+```
+
+`targetRecipeId` keeps the public recipe identity stable. The API verifies that the submitting Google login owns the recipe, rejects a stale `baseRecipeChecksum`, and permits only one pending update per recipe. Until an administrator approves the submission, public list/detail endpoints continue serving the existing payload. Approval updates the existing `community_recipes` row rather than inserting a replacement, so ratings, saves, public URLs, and `publishedAt` are preserved while `updatedAt` and `source.submissionId` advance to the approved revision.
+
+The create-submission response and admin submission DTO include `submissionType` (`create` or `update`), `targetRecipeId`, and `baseRecipeChecksum`. Admin detail responses for updates additionally include `publishedRecipe`, containing the currently public recipe and checksum, so moderation clients can display a diff. If the public recipe changes while a submission is awaiting review, approval returns `409 conflict` and the author must submit a fresh update based on the latest checksum.
+
+Exact duplicate submissions from the same authenticated author are deduplicated by the canonical recipe checksum:
+
+- While the first copy is `pending`, another identical `POST /api/community/submissions` returns that existing submission with `200 OK`, `duplicate: true`, and `alreadyPublished: false`. No additional moderation queue item is created.
+- After approval, submitting the identical recipe again returns the existing submission and stable `recipeId` with `200 OK`, `duplicate: true`, and `alreadyPublished: true`. No new submission or public recipe is created.
+- After rejection, the author may submit the same payload again; this creates a new pending submission so a corrected moderation decision remains possible.
+- Different authors are not merged solely by checksum. Ownership and attribution remain separate even if their payloads happen to be identical.
+- Only one pending update can exist for a published recipe at a time. Repeating the exact same update returns the existing submission with `200 OK`, `duplicate: true`, and `alreadyPublished: false`, allowing a client that lost its local pending state to recover the pending submission ID.
+- Sending different changes while another update is pending returns `409 pending_update_conflict`. `error.details` includes `targetRecipeId`, `pendingSubmissionId`, `pendingRecipeChecksum`, `submittedRecipeChecksum`, and `pendingCreatedAt`. The client should store the pending submission ID, mark the local publication as awaiting moderation, and avoid treating the unchanged public recipe as proof that no update is pending.
 
 The feed implements cursor pagination (default 20, maximum 50), `q`, `tagIds`, `methodIds`, `savedByMe`, and `newest`, `topRated`, `mostSaved`, `alphabetical`, or deterministic seeded `random` sorting. A cursor is tied to its original query and cannot be reused with different filters. Save/rating mutations and aggregate recounts run in a single D1 `batch()` transaction, making duplicate saves and rating replacement atomic without migration-time triggers.
 
@@ -557,7 +590,11 @@ Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 
 ### Community moderation UI
 
-The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. Update submissions are marked separately and show the changed fields side by side against the currently published recipe. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+
+Administrators can delete an approved publication from its review detail. Deletion is implemented as a soft delete: the recipe status becomes `hidden`, so it immediately disappears from public list/detail/save/rating endpoints and from the admin **Approved recipes** list, while its payload, ratings, saves, and moderation history remain available for operational recovery. Any pending update targeting the deleted publication is rejected in the same D1 batch so a later approval cannot accidentally republish it. Repeating the delete request is idempotent and returns `alreadyDeleted: true`. The Approved recipes list represents current published recipes rather than the full approval-event history, so after an update is approved it shows only the latest active revision.
+
+Rejected submissions can be permanently deleted from their review detail. `DELETE /api/admin/community/submissions/:id` is allowed only when the submission status is `rejected`; pending or approved submissions return `409 conflict`. Permanent deletion removes both the rejected submission and its associated `admin_moderation_events` records, then removes the card from the Rejected recipes list. This operation cannot be undone.
 
 The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
 
