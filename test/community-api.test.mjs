@@ -39,6 +39,9 @@ class MemoryD1 {
     if (sql.startsWith('INSERT INTO community_submissions') || sql.startsWith('INSERT OR IGNORE INTO community_submissions')) {
       const [id, submitter_user_id, author_google_login, payload_json, recipe_checksum, created_at, target_recipe_id, base_recipe_checksum] = v;
       this.submissions.set(id, { id, submitter_user_id, author_google_login, payload_json, recipe_checksum, status: 'pending', rejection_reason: null, moderator_notes: null, created_at, reviewed_at: null, reviewed_by: null, target_recipe_id, base_recipe_checksum });
+    } else if (sql.startsWith("UPDATE community_submissions SET status = 'rejected'") && sql.includes('target_recipe_id = ?')) {
+      const [rejectionReason, reviewedAt, reviewedBy, recipeId] = v;
+      for (const row of this.submissions.values()) if (row.target_recipe_id === recipeId && row.status === 'pending') Object.assign(row, { status: 'rejected', rejection_reason: rejectionReason, reviewed_at: reviewedAt, reviewed_by: reviewedBy });
     } else if (sql.startsWith("UPDATE community_submissions SET status = 'rejected'")) {
       const [rejection_reason, moderator_notes, reviewed_at, reviewed_by, id] = v; Object.assign(this.submissions.get(id), { status: 'rejected', rejection_reason, moderator_notes, reviewed_at, reviewed_by });
     } else if (sql.startsWith("UPDATE community_submissions SET status = 'approved'")) {
@@ -51,6 +54,9 @@ class MemoryD1 {
       const [submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at, id, baseChecksum] = v;
       const row = this.recipes.get(id);
       if (row?.recipe_checksum === baseChecksum) Object.assign(row, { submission_id, author_user_id, author_google_login, payload_json, recipe_checksum, name_normalized, search_tokens_json, tag_ids_json, method_ids_json, updated_at });
+    } else if (sql.startsWith("UPDATE community_recipes SET status = 'hidden'")) {
+      const [updatedAt, id] = v; const row = this.recipes.get(id);
+      if (row?.status === 'published') Object.assign(row, { status: 'hidden', updated_at: updatedAt });
     } else if (sql.startsWith('INSERT INTO admin_moderation_events')) this.audit.push(v);
     else if (sql.startsWith('INSERT OR IGNORE INTO community_recipe_saves')) {
       const [recipeId, userId, createdAt] = v; const key = `${recipeId}:${userId}`;
@@ -85,6 +91,7 @@ class MemoryD1 {
       return [...this.recipes.values()].find((row) => row.author_user_id === v[0] && row.recipe_checksum === v[1] && row.status === 'published') ?? null;
     }
     if (sql.includes('FROM community_recipes WHERE id = ?')) return this.recipes.get(v[0]) ?? null;
+    if (sql.includes('FROM community_recipes WHERE submission_id = ?')) return [...this.recipes.values()].find((row) => row.submission_id === v[0]) ?? null;
     if (sql.includes('FROM community_recipes r WHERE r.id = ?')) {
       const personalized = sql.includes('s.user_id = ?'); const id = v[personalized ? 2 : 0]; return this.personalize(this.recipes.get(id)?.status === 'published' ? this.recipes.get(id) : null, personalized ? v[0] : null);
     }
@@ -276,6 +283,40 @@ test('approve publishes full importable recipe and author in public list/detail'
   const list = await api(database, '/api/community/recipes?sort=newest&limit=20'); assert.equal(list.status, 200); const item = (await list.json()).items[0];
   assert.equal(item.id, recipeId); assert.deepEqual(item.recipe, richPayload.recipe); assert.equal(item.author.googleLogin, 'author@gmail.com'); assert.equal(item.source.submissionId, created.id); assert.equal(item.isSavedByCurrentUser, false);
   const detail = await api(database, `/api/community/recipes/${recipeId}`); assert.deepEqual((await detail.json()).recipe.ingredients, richPayload.recipe.ingredients);
+});
+
+test('admin can delete a published recipe and pending updates cannot republish it', async () => {
+  const database = new MemoryD1();
+  const created = await submit(database);
+  const approved = await moderate(database, created.id, 'approve');
+  const recipeId = (await approved.json()).recipeId;
+  const detail = await api(database, `/api/admin/community/submissions/${created.id}`, {
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.equal((await detail.json()).publishedRecipe.id, recipeId);
+
+  const updatePayload = { ...richPayload, recipe: { ...richPayload.recipe, name: 'Pending removal update' } };
+  const update = await submitUpdate(database, recipeId, updatePayload, database.recipes.get(recipeId).recipe_checksum);
+  const updateId = (await update.json()).id;
+  const unauthorized = await api(database, `/api/admin/community/recipes/${recipeId}`, { method: 'DELETE', headers: userHeaders() });
+  assert.equal(unauthorized.status, 401);
+
+  const removed = await api(database, `/api/admin/community/recipes/${recipeId}`, {
+    method: 'DELETE',
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.deepEqual(await removed.json(), { recipeId, status: 'hidden', deleted: true, alreadyDeleted: false });
+  assert.equal(database.recipes.get(recipeId).status, 'hidden');
+  assert.equal(database.submissions.get(updateId).status, 'rejected');
+  assert.match(database.submissions.get(updateId).rejection_reason, /removed by administrator/);
+  assert.equal((await api(database, `/api/community/recipes/${recipeId}`)).status, 404);
+  assert.deepEqual((await (await api(database, '/api/community/recipes')).json()).items, []);
+
+  const secondDelete = await api(database, `/api/admin/community/recipes/${recipeId}`, {
+    method: 'DELETE',
+    headers: userHeaders({ 'X-Test-Admin': 'true' }),
+  });
+  assert.deepEqual(await secondDelete.json(), { recipeId, status: 'hidden', deleted: true, alreadyDeleted: true });
 });
 
 test('feed supports cursor, search, tag/method filters and required sorts', async () => {

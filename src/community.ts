@@ -93,6 +93,7 @@ function submissionDto(row: SubmissionRow, includePayload = false, targetRecipe:
       reviewedAt: row.reviewed_at, reviewedBy: row.reviewed_by,
       publishedRecipe: targetRecipe ? {
         id: targetRecipe.id,
+        status: targetRecipe.status,
         recipeChecksum: targetRecipe.recipe_checksum,
         updatedAt: targetRecipe.updated_at,
         recipe: parseJson<RecipeSharePayloadV1>(targetRecipe.payload_json).recipe,
@@ -235,8 +236,24 @@ async function listSubmissions(url: URL, database: D1Database): Promise<Response
 async function getSubmission(submissionId: string, database: D1Database): Promise<Response> {
   const row = await database.prepare("SELECT * FROM community_submissions WHERE id = ?").bind(submissionId).first<SubmissionRow>();
   if (!row) return jsonError("not_found", "Community submission was not found", 404);
-  const target = row.target_recipe_id ? await database.prepare("SELECT * FROM community_recipes WHERE id = ?").bind(row.target_recipe_id).first<RecipeRow>() : null;
+  const target = row.target_recipe_id
+    ? await database.prepare("SELECT * FROM community_recipes WHERE id = ?").bind(row.target_recipe_id).first<RecipeRow>()
+    : await database.prepare("SELECT * FROM community_recipes WHERE submission_id = ?").bind(row.id).first<RecipeRow>();
   return jsonResponse(submissionDto(row, true, target));
+}
+
+async function deletePublishedRecipe(database: D1Database, recipeId: string, adminId: string): Promise<Response> {
+  const row = await database.prepare("SELECT * FROM community_recipes WHERE id = ?").bind(recipeId).first<RecipeRow>();
+  if (!row) return jsonError("not_found", "Community recipe was not found", 404);
+  if (row.status === "hidden") return jsonResponse({ recipeId, status: "hidden", deleted: true, alreadyDeleted: true });
+  const now = new Date().toISOString();
+  const reason = `Published recipe removed by administrator ${adminId}`;
+  await database.batch([
+    database.prepare("UPDATE community_recipes SET status = 'hidden', updated_at = ? WHERE id = ? AND status = 'published'").bind(now, recipeId),
+    database.prepare(`UPDATE community_submissions SET status = 'rejected', rejection_reason = ?, reviewed_at = ?, reviewed_by = ?
+      WHERE target_recipe_id = ? AND status = 'pending'`).bind(reason, now, adminId, recipeId),
+  ]);
+  return jsonResponse({ recipeId, status: "hidden", deleted: true, alreadyDeleted: false });
 }
 
 async function moderate(request: Request, env: CommunityEnv, database: D1Database, submissionId: string, adminId: string): Promise<Response> {
@@ -389,6 +406,11 @@ export async function handleCommunityRequest(request: Request, env: CommunityEnv
     let admin;
     try { admin = await requireAdmin(request, env); } catch (error) { return error instanceof AuthError ? error.response : jsonError("unauthorized", "Administrator authentication is required", 401); }
     if (path === "/api/admin/community/submissions") return request.method === "GET" ? listSubmissions(url, database) : jsonError("method_not_allowed", "Method not allowed", 405);
+    const recipeMatch = path.match(/^\/api\/admin\/community\/recipes\/([^/]+)$/);
+    if (recipeMatch?.[1]) {
+      if (request.method === "DELETE") return deletePublishedRecipe(database, recipeMatch[1], admin.id);
+      return jsonError("method_not_allowed", "Method not allowed", 405);
+    }
     const match = path.match(/^\/api\/admin\/community\/submissions\/([^/]+)$/);
     if (match?.[1]) {
       if (request.method === "GET") return getSubmission(match[1], database);

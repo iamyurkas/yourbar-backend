@@ -556,6 +556,7 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` RS256 signature against the te
 - `POST /api/community/submissions`
 - `GET /api/admin/community/submissions`
 - `GET|PATCH /api/admin/community/submissions/:id`
+- `DELETE /api/admin/community/recipes/:id`
 - `GET /api/community/recipes`
 - `GET /api/community/recipes/:id`
 - `POST|DELETE /api/community/recipes/:id/save`
@@ -589,6 +590,8 @@ Follow-up filters not yet implemented: `minAverageRating` / `ratingBuckets`.
 ### Community moderation UI
 
 The Worker serves a responsive moderation workspace at `/admin` on the same origin as the API. It supports pending, approved, and rejected queues, full recipe review, moderator notes, approval, rejection with an optional reason, pagination, and responsive mobile layouts. Update submissions are marked separately and show the changed fields side by side against the currently published recipe. The page uses the protected `/api/admin/community/*` endpoints and does not contain administrator credentials or secrets.
+
+Administrators can delete an approved publication from its review detail. Deletion is implemented as a soft delete: the recipe status becomes `hidden`, so it immediately disappears from public list/detail/save/rating endpoints while its payload, ratings, saves, and moderation history remain available for operational recovery. Any pending update targeting the deleted publication is rejected in the same D1 batch so a later approval cannot accidentally republish it. Repeating the delete request is idempotent and returns `alreadyDeleted: true`.
 
 The moderation API requires a valid Cloudflare Access JWT. If the page shows `Cloudflare Access authentication is required`, the request reached the Worker without a `Cf-Access-Jwt-Assertion` header; this normally means the API path is not covered by an Access application yet.
 
