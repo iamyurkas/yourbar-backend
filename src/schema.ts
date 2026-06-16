@@ -81,6 +81,7 @@ export type CommunityRecipeListItemDTO = {
   ratingSum: number;
   averageRating: number;
   isSavedByCurrentUser: boolean;
+  isOwnedByCurrentUser: boolean;
   currentUserRating: number | null;
   shareUrl?: string;
   publicUrl?: string;

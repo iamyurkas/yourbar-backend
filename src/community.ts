@@ -26,7 +26,7 @@ type RecipeRow = {
   status: "published" | "hidden"; save_count: number; rating_count: number; rating_sum: number;
   name_normalized: string; search_tokens_json: string; tag_ids_json: string; method_ids_json: string;
   random_key: string; published_at: string; updated_at: string;
-  current_user_saved?: number | null; current_user_rating?: number | null;
+  current_user_saved?: number | null; current_user_rating?: number | null; current_user_is_author?: number | null;
 };
 
 const SORTS = new Set(["newest", "topRated", "mostSaved", "alphabetical", "random"]);
@@ -76,6 +76,7 @@ function recipeDto(row: RecipeRow, env: CommunityEnv): CommunityRecipeListItemDT
     ratingSum: row.rating_sum,
     averageRating: average(row),
     isSavedByCurrentUser: Boolean(row.current_user_saved),
+    isOwnedByCurrentUser: Boolean(row.current_user_is_author),
     currentUserRating: row.current_user_rating ?? null,
     ...(root ? { shareUrl: `${root}/api/community/recipes/${row.id}`, publicUrl: `${root}/api/community/recipes/${row.id}` } : {}),
     source: { kind: "community" as const, submissionId: row.submission_id },
@@ -151,9 +152,10 @@ async function optionalUser(request: Request, env: CommunityEnv): Promise<Authen
 async function publishedRecipe(database: D1Database, recipeId: string, user: AuthenticatedUser | null): Promise<RecipeRow | null> {
   const statement = database.prepare(`SELECT r.*,
     ${user ? "EXISTS(SELECT 1 FROM community_recipe_saves s WHERE s.recipe_id = r.id AND s.user_id = ?)" : "0"} AS current_user_saved,
-    ${user ? "(SELECT rating FROM community_recipe_ratings x WHERE x.recipe_id = r.id AND x.user_id = ?)" : "NULL"} AS current_user_rating
+    ${user ? "(SELECT rating FROM community_recipe_ratings x WHERE x.recipe_id = r.id AND x.user_id = ?)" : "NULL"} AS current_user_rating,
+    ${user ? "CASE WHEN r.author_user_id = ? OR lower(r.author_google_login) = lower(?) THEN 1 ELSE 0 END" : "0"} AS current_user_is_author
     FROM community_recipes r WHERE r.id = ? AND r.status = 'published'`);
-  return user ? statement.bind(user.id, user.id, recipeId).first<RecipeRow>() : statement.bind(recipeId).first<RecipeRow>();
+  return user ? statement.bind(user.id, user.id, user.id, user.email ?? "", recipeId).first<RecipeRow>() : statement.bind(recipeId).first<RecipeRow>();
 }
 
 async function createSubmission(request: Request, env: CommunityEnv, database: D1Database): Promise<Response> {
@@ -379,10 +381,11 @@ async function listRecipes(request: Request, env: CommunityEnv, database: D1Data
   const selectValues: unknown[] = [];
   const savedSql = user ? "EXISTS(SELECT 1 FROM community_recipe_saves s WHERE s.recipe_id=r.id AND s.user_id=?)" : "0";
   const ratingSql = user ? "(SELECT rating FROM community_recipe_ratings x WHERE x.recipe_id=r.id AND x.user_id=?)" : "NULL";
-  if (user) selectValues.push(user.id, user.id);
+  const ownedSql = user ? "CASE WHEN r.author_user_id = ? OR lower(r.author_google_login) = lower(?) THEN 1 ELSE 0 END" : "0";
+  if (user) selectValues.push(user.id, user.id, user.id, user.email ?? "");
   if (sort === "random") values.push(seedNumber(seed));
   values.push(limit + 1, offset);
-  const result = await database.prepare(`SELECT r.*, ${savedSql} AS current_user_saved, ${ratingSql} AS current_user_rating
+  const result = await database.prepare(`SELECT r.*, ${savedSql} AS current_user_saved, ${ratingSql} AS current_user_rating, ${ownedSql} AS current_user_is_author
     FROM community_recipes r WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`).bind(...selectValues, ...values).all<RecipeRow>();
   const rows = result.results ?? [];
   const hasMore = rows.length > limit;

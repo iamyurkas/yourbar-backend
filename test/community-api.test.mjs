@@ -83,9 +83,10 @@ class MemoryD1 {
     }
     return { success: true, meta: { changes: 1 } };
   }
-  personalize(row, userId) {
+  personalize(row, userId, userEmail = '') {
     if (!row) return null;
-    return { ...row, current_user_saved: userId ? Number(this.saves.has(`${row.id}:${userId}`)) : 0, current_user_rating: userId ? this.ratings.get(`${row.id}:${userId}`)?.rating ?? null : null };
+    const isAuthor = userId && (row.author_user_id === userId || row.author_google_login.toLowerCase() === userEmail.toLowerCase());
+    return { ...row, current_user_saved: userId ? Number(this.saves.has(`${row.id}:${userId}`)) : 0, current_user_rating: userId ? this.ratings.get(`${row.id}:${userId}`)?.rating ?? null : null, current_user_is_author: Number(Boolean(isAuthor)) };
   }
   async first(sql, v) {
     if (sql.includes('FROM community_submissions WHERE id = ?')) return this.submissions.get(v[0]) ?? null;
@@ -99,7 +100,7 @@ class MemoryD1 {
     if (sql.includes('FROM community_recipes WHERE id = ?')) return this.recipes.get(v[0]) ?? null;
     if (sql.includes('FROM community_recipes WHERE submission_id = ?')) return [...this.recipes.values()].find((row) => row.submission_id === v[0]) ?? null;
     if (sql.includes('FROM community_recipes r WHERE r.id = ?')) {
-      const personalized = sql.includes('s.user_id = ?'); const id = v[personalized ? 2 : 0]; return this.personalize(this.recipes.get(id)?.status === 'published' ? this.recipes.get(id) : null, personalized ? v[0] : null);
+      const personalized = sql.includes('s.user_id = ?'); const id = v[personalized ? 4 : 0]; return this.personalize(this.recipes.get(id)?.status === 'published' ? this.recipes.get(id) : null, personalized ? v[0] : null, personalized ? v[3] : '');
     }
     return null;
   }
@@ -117,7 +118,7 @@ class MemoryD1 {
       const [status, limit, offset] = v; const rows = [...this.submissions.values()].filter((row) => row.status === status).sort((a,b) => b.created_at.localeCompare(a.created_at)); return { success: true, results: rows.slice(offset, offset + limit) };
     }
     if (sql.includes('FROM community_recipes r WHERE')) {
-      const personalized = sql.includes('s.user_id=?'); const userId = personalized ? v[0] : null; let rows = [...this.recipes.values()].filter((row) => row.status === 'published');
+      const personalized = sql.includes('s.user_id=?'); const userId = personalized ? v[0] : null; const userEmail = personalized ? v[3] : ''; let rows = [...this.recipes.values()].filter((row) => row.status === 'published');
       const patterns = v.filter((value) => typeof value === 'string' && value.startsWith('%')).map((value) => value.slice(1, -1).replace(/\\([%_\\])/g, '$1'));
       if (sql.includes('name_normalized LIKE') && patterns[0]) rows = rows.filter((row) => row.name_normalized.includes(patterns[0]) || row.search_tokens_json.includes(patterns[0]));
       if (sql.includes('tag_ids_json LIKE')) { const pattern = patterns.at(sql.includes('name_normalized LIKE') ? 2 : 0); rows = rows.filter((row) => row.tag_ids_json.includes(pattern)); }
@@ -127,7 +128,7 @@ class MemoryD1 {
       else if (sql.includes('save_count DESC')) rows.sort((a,b) => b.save_count-a.save_count);
       else if (sql.includes('rating_sum AS REAL')) rows.sort((a,b) => (b.rating_sum/(b.rating_count||1))-(a.rating_sum/(a.rating_count||1)));
       else rows.sort((a,b) => b.published_at.localeCompare(a.published_at));
-      const limit = v.at(-2), offset = v.at(-1); return { success: true, results: rows.slice(offset, offset + limit).map((row) => this.personalize(row, userId)) };
+      const limit = v.at(-2), offset = v.at(-1); return { success: true, results: rows.slice(offset, offset + limit).map((row) => this.personalize(row, userId, userEmail)) };
     }
     return { success: true, results: [] };
   }
@@ -409,9 +410,9 @@ test('feed supports cursor, search, tag/method filters and required sorts', asyn
 test('save is authenticated, idempotent, personalized, and returns mobile import DTO', async () => {
   const database = new MemoryD1(); const created = await submit(database); const approved = await moderate(database, created.id, 'approve'); const recipeId = (await approved.json()).recipeId;
   const noAuth = await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'POST' }); assert.equal(noAuth.status, 401);
-  const first = await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'POST', headers: userHeaders() }); const body = await first.json(); assert.equal(body.saveCount, 1); assert.deepEqual(body.import.recipe, richPayload.recipe); assert.equal(body.communityRecipe.isSavedByCurrentUser, true);
+  const first = await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'POST', headers: userHeaders() }); const body = await first.json(); assert.equal(body.saveCount, 1); assert.deepEqual(body.import.recipe, richPayload.recipe); assert.equal(body.communityRecipe.isSavedByCurrentUser, true); assert.equal(body.communityRecipe.isOwnedByCurrentUser, true);
   const duplicate = await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'POST', headers: userHeaders() }); assert.equal((await duplicate.json()).saveCount, 1);
-  const personalized = await api(database, `/api/community/recipes/${recipeId}`, { headers: userHeaders() }); assert.equal((await personalized.json()).isSavedByCurrentUser, true);
+  const personalized = await api(database, `/api/community/recipes/${recipeId}`, { headers: userHeaders() }); const personalizedBody = await personalized.json(); assert.equal(personalizedBody.isSavedByCurrentUser, true); assert.equal(personalizedBody.isOwnedByCurrentUser, true);
   await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'DELETE', headers: userHeaders() }); const secondDelete = await api(database, `/api/community/recipes/${recipeId}/save`, { method: 'DELETE', headers: userHeaders() }); assert.equal((await secondDelete.json()).saveCount, 0);
 });
 
