@@ -82,6 +82,14 @@ function recipeDto(row: RecipeRow, env: CommunityEnv): CommunityRecipeListItemDT
     author: { googleLogin: row.author_google_login },
   };
 }
+function ratingSummary(row: RecipeRow) {
+  return {
+    saveCount: row.save_count,
+    ratingCount: row.rating_count,
+    ratingSum: row.rating_sum,
+    averageRating: average(row),
+  };
+}
 function submissionDto(row: SubmissionRow, includePayload = false, targetRecipe: RecipeRow | null = null) {
   return {
     id: row.id, status: row.status, createdAt: row.created_at, recipeChecksum: row.recipe_checksum,
@@ -96,6 +104,7 @@ function submissionDto(row: SubmissionRow, includePayload = false, targetRecipe:
         status: targetRecipe.status,
         recipeChecksum: targetRecipe.recipe_checksum,
         updatedAt: targetRecipe.updated_at,
+        ...ratingSummary(targetRecipe),
         recipe: parseJson<RecipeSharePayloadV1>(targetRecipe.payload_json).recipe,
       } : null,
     } : {}),
@@ -245,8 +254,15 @@ async function listSubmissions(url: URL, database: D1Database): Promise<Response
     : await database.prepare("SELECT * FROM community_submissions WHERE status = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
       .bind(status, limit + 1, offset).all<SubmissionRow>();
   const rows = result.results ?? [];
+  const pageRows = rows.slice(0, limit);
+  const approvedTargets = status === "approved"
+    ? await Promise.all(pageRows.map((row) => database.prepare("SELECT * FROM community_recipes WHERE submission_id = ?").bind(row.id).first<RecipeRow>()))
+    : [];
   const hasMore = rows.length > limit;
-  return jsonResponse({ items: rows.slice(0, limit).map((row) => submissionDto(row, true)), nextCursor: hasMore ? encodeCursor(offset + limit, fingerprint) : null });
+  return jsonResponse({
+    items: pageRows.map((row, index) => submissionDto(row, true, approvedTargets[index] ?? null)),
+    nextCursor: hasMore ? encodeCursor(offset + limit, fingerprint) : null,
+  });
 }
 
 async function getSubmission(submissionId: string, database: D1Database): Promise<Response> {
