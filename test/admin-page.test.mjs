@@ -34,7 +34,7 @@ test('admin moderation page is served at both canonical paths', async () => {
     assert.doesNotMatch(html, /Please provide a rejection reason/);
     assert.match(html, /ratingText=\(recipe\)=>/);
     assert.match(html, /Overall rating/);
-    assert.match(html, /Rating sum/);
+    assert.doesNotMatch(html, /Rating sum/);
     assert.match(html, /Delete published recipe/);
     assert.match(html, /Permanently delete rejected recipe/);
     assert.match(html, /\/api\/admin\/community\/recipes\//);
