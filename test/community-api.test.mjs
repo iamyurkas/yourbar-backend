@@ -381,6 +381,7 @@ test('approved admin queue shows only the current published revision', async () 
   const updateId = (await update.json()).id;
   await moderate(database, updateId, 'approve');
 
+  await api(database, `/api/community/recipes/${recipeId}/rating`, { method: 'PUT', headers: userHeaders(), body: JSON.stringify({ rating: 5 }) });
   const queue = await api(database, '/api/admin/community/submissions?status=approved', {
     headers: userHeaders({ 'X-Test-Admin': 'true' }),
   });
@@ -388,6 +389,10 @@ test('approved admin queue shows only the current published revision', async () 
   assert.equal(items.length, 1);
   assert.equal(items[0].id, updateId);
   assert.equal(items[0].recipe.name, 'Current approved revision');
+  assert.equal(items[0].publishedRecipe.id, recipeId);
+  assert.equal(items[0].publishedRecipe.ratingCount, 1);
+  assert.equal(items[0].publishedRecipe.ratingSum, 5);
+  assert.equal(items[0].publishedRecipe.averageRating, 5);
 });
 
 test('feed supports cursor, search, tag/method filters and required sorts', async () => {
